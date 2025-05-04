@@ -36,7 +36,8 @@ AI_STATS = {
     'positions_evaluated': 0,
     'thinking_time': 0.0,
     'visualization_edges': {},  # To track which edges to highlight
-    'total_cache_size': 0
+    'total_cache_size': 0,
+    'show_stats': False  # Flag to control stats visibility
 }
 
 # ----- Scale Calculation Functions -----
@@ -127,10 +128,14 @@ def init_state(board_radius=None):
     board_height = max_y - min_y
 
     # Compute offsets to center the board in the window.
+    # Calculate the available area, accounting for the top UI elements (buttons)
+    top_ui_height = 70  # Approximate height for top UI elements
     WIDTH = CURRENT_WIDTH - 2 * MARGIN
-    HEIGHT = CURRENT_HEIGHT - 2 * MARGIN
-    offset_x = (WIDTH - board_width) / 2 - min_x
-    offset_y = (HEIGHT - board_height) / 2 - min_y
+    HEIGHT = CURRENT_HEIGHT - 2 * MARGIN - top_ui_height
+    
+    # Calculate offsets that will center the board in the available space
+    offset_x = (WIDTH - board_width) / 2 + MARGIN - min_x
+    offset_y = (HEIGHT - board_height) / 2 + MARGIN + top_ui_height - min_y
 
     # Build final state using the computed offset.
     state = {}
@@ -347,7 +352,7 @@ def order_moves(state, moves, maximizing_player):
         return [move for move, score in sorted(move_scores, key=lambda x: x[1])]
 
 # ----- Updated Drawing Function -----
-def draw_board(screen, state, font, back_button=None):
+def draw_board(screen, state, font, back_button=None, stats_button=None):
     """
     Render the board with visualization of the AI's thinking process.
     """
@@ -382,8 +387,8 @@ def draw_board(screen, state, font, back_button=None):
                 color = RED if owner == 0 else BLUE
                 width = int(4 * scale)
         else:
-            # Check if this edge is in our visualization dictionary
-            if edge in AI_STATS['visualization_edges']:
+            # Check if this edge is in our visualization dictionary and stats are visible
+            if AI_STATS['show_stats'] and edge in AI_STATS['visualization_edges']:
                 if AI_STATS['visualization_edges'][edge] == 'cache_hit':
                     color = LIGHT_GREEN  # Cache hit
                     width = int(2 * scale)
@@ -409,41 +414,47 @@ def draw_board(screen, state, font, back_button=None):
     score_text = font.render(f"Human: {state['score'][0]}  AI: {state['score'][1]}", True, BLACK)
     screen.blit(score_text, (scaled_margin, CURRENT_HEIGHT - scaled_margin))
     
-    # Draw AI stats - position based on current window size
-    stats_x = CURRENT_WIDTH - 200 * scale
-    stats_y = scaled_margin
-    line_height = 30 * scale
-    
-    stats_text = font.render(f"Time: {AI_STATS['thinking_time']:.3f}s", True, BLUE)
-    screen.blit(stats_text, (stats_x, stats_y))
-    
-    cache_text = font.render(f"Cache: {AI_STATS['total_cache_size']} positions", True, BLUE)
-    screen.blit(cache_text, (stats_x, stats_y + line_height))
-    
-    hits_text = font.render(f"Hits: {AI_STATS['cache_hits']}", True, LIGHT_GREEN)
-    screen.blit(hits_text, (stats_x, stats_y + line_height * 2))
-    
-    evals_text = font.render(f"Evals: {AI_STATS['positions_evaluated']}", True, LIGHT_YELLOW)
-    screen.blit(evals_text, (stats_x, stats_y + line_height * 3))
-    
-    # If we have both hits and evaluations, show efficiency
-    if AI_STATS['positions_evaluated'] + AI_STATS['cache_hits'] > 0:
-        efficiency = AI_STATS['cache_hits'] / (AI_STATS['positions_evaluated'] + AI_STATS['cache_hits']) * 100
-        eff_text = font.render(f"Efficiency: {efficiency:.1f}%", True, BLUE)
-        screen.blit(eff_text, (stats_x, stats_y + line_height * 4))
-    
-    # Add legend
-    pygame.draw.rect(screen, LIGHT_GREEN, (stats_x - 20 * scale, stats_y + line_height * 5, 15 * scale, 15 * scale))
-    legend1 = font.render("Cache hit", True, BLACK)
-    screen.blit(legend1, (stats_x, stats_y + line_height * 5))
-    
-    pygame.draw.rect(screen, LIGHT_YELLOW, (stats_x - 20 * scale, stats_y + line_height * 6, 15 * scale, 15 * scale))
-    legend2 = font.render("New evaluation", True, BLACK)
-    screen.blit(legend2, (stats_x, stats_y + line_height * 6))
+    # Only draw AI stats if the show_stats flag is True
+    if AI_STATS['show_stats']:
+        # Draw AI stats - position based on current window size
+        stats_x = CURRENT_WIDTH - 200 * scale
+        stats_y = scaled_margin + 50 * scale  # Added 50 scaled pixels to move stats down below the button
+        line_height = 30 * scale
+        
+        stats_text = font.render(f"Time: {AI_STATS['thinking_time']:.3f}s", True, BLUE)
+        screen.blit(stats_text, (stats_x, stats_y))
+        
+        cache_text = font.render(f"Cache: {AI_STATS['total_cache_size']} positions", True, BLUE)
+        screen.blit(cache_text, (stats_x, stats_y + line_height))
+        
+        hits_text = font.render(f"Hits: {AI_STATS['cache_hits']}", True, LIGHT_GREEN)
+        screen.blit(hits_text, (stats_x, stats_y + line_height * 2))
+        
+        evals_text = font.render(f"Evals: {AI_STATS['positions_evaluated']}", True, LIGHT_YELLOW)
+        screen.blit(evals_text, (stats_x, stats_y + line_height * 3))
+        
+        # If we have both hits and evaluations, show efficiency
+        if AI_STATS['positions_evaluated'] + AI_STATS['cache_hits'] > 0:
+            efficiency = AI_STATS['cache_hits'] / (AI_STATS['positions_evaluated'] + AI_STATS['cache_hits']) * 100
+            eff_text = font.render(f"Efficiency: {efficiency:.1f}%", True, BLUE)
+            screen.blit(eff_text, (stats_x, stats_y + line_height * 4))
+        
+        # Add legend
+        pygame.draw.rect(screen, LIGHT_GREEN, (stats_x - 20 * scale, stats_y + line_height * 5, 15 * scale, 15 * scale))
+        legend1 = font.render("Cache hit", True, BLACK)
+        screen.blit(legend1, (stats_x, stats_y + line_height * 5))
+        
+        pygame.draw.rect(screen, LIGHT_YELLOW, (stats_x - 20 * scale, stats_y + line_height * 6, 15 * scale, 15 * scale))
+        legend2 = font.render("New evaluation", True, BLACK)
+        screen.blit(legend2, (stats_x, stats_y + line_height * 6))
     
     # Draw back button if provided
     if back_button:
         draw_button(screen, back_button, is_button_hovered(back_button, pygame.mouse.get_pos()))
+    
+    # Draw stats button if provided
+    if stats_button:
+        draw_button(screen, stats_button, is_button_hovered(stats_button, pygame.mouse.get_pos()))
     
     pygame.display.flip()
 
@@ -831,6 +842,14 @@ def run_game_loop(screen, font, settings):
     back_button = create_button("Back", 20 * get_scale_factor(), 20 * get_scale_factor(), 
                               100 * get_scale_factor(), 40 * get_scale_factor(), button_font)
     
+    # Create a new stats toggle button
+    stats_button_text = "Show Stats"
+    stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 20 * get_scale_factor(),
+                               120 * get_scale_factor(), 40 * get_scale_factor(), button_font)
+    
+    # Set initial AI stats visibility to False
+    AI_STATS['show_stats'] = False
+    
     while running:
         # Handle events (e.g. closing window, clicks, resize)
         for event in pygame.event.get():
@@ -844,10 +863,16 @@ def run_game_loop(screen, font, settings):
                 # Recalculate font size based on new window size
                 font_size = int(28 * get_scale_factor())
                 font = pygame.font.SysFont(None, max(12, font_size))
-                # Update back button position and size
+                # Update button positions and sizes
                 button_font = pygame.font.SysFont(None, int(32 * get_scale_factor()))
                 back_button = create_button("Back", 20 * get_scale_factor(), 20 * get_scale_factor(), 
                                           100 * get_scale_factor(), 40 * get_scale_factor(), button_font)
+                stats_button_text = "Show Stats" if not AI_STATS['show_stats'] else "Hide Stats"
+                stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 
+                                           20 * get_scale_factor(), 120 * get_scale_factor(), 
+                                           40 * get_scale_factor(), button_font)
+                # Rebuild the game state to recenter the board
+                state = init_state(settings['board_radius'])
                 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
@@ -856,13 +881,23 @@ def run_game_loop(screen, font, settings):
                 if back_button['rect'].collidepoint(pos):
                     return  # Exit game loop and return to main menu
                 
+                # Check if stats button was clicked
+                if stats_button['rect'].collidepoint(pos):
+                    # Toggle stats visibility
+                    AI_STATS['show_stats'] = not AI_STATS['show_stats']
+                    # Update button text
+                    stats_button_text = "Show Stats" if not AI_STATS['show_stats'] else "Hide Stats"
+                    stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 
+                                               20 * get_scale_factor(), 120 * get_scale_factor(), 
+                                               40 * get_scale_factor(), button_font)
+                
                 # Only allow moves if it is the human player's turn.
                 if state['turn'] == 0:
                     move = get_clicked_edge(pos, state)
                     if move is not None:
                         new_state, extra_turn = apply_move(state, move, 0)
                         state = new_state
-                        draw_board(screen, state, font, back_button)
+                        draw_board(screen, state, font, back_button, stats_button)
                         # Reset visualization edges after human move
                         AI_STATS['visualization_edges'] = {}
 
@@ -876,7 +911,7 @@ def run_game_loop(screen, font, settings):
             AI_STATS['visualization_edges'] = {}
             
             # Small delay to show update and redraw the board
-            draw_board(screen, state, font, back_button)
+            draw_board(screen, state, font, back_button, stats_button)
             pygame.time.delay(200)
             
             # Double-check that there are valid moves available
@@ -918,7 +953,7 @@ def run_game_loop(screen, font, settings):
                             AI_STATS['visualization_edges'][edge] = 'cache_hit'
                 
                 # Show visualization for a moment before making the move
-                draw_board(screen, state, font, back_button)
+                draw_board(screen, state, font, back_button, stats_button)
                 pygame.display.flip()
                 pygame.time.delay(1000)  # Pause to show the visualization
                 
@@ -928,10 +963,10 @@ def run_game_loop(screen, font, settings):
                 
             pygame.display.set_caption("HexaHunt - Hexagonal Dots and Boxes")
 
-        draw_board(screen, state, font, back_button)
+        draw_board(screen, state, font, back_button, stats_button)
         if is_terminal(state):
             # Final drawing and delay before returning to menu
-            draw_board(screen, state, font, back_button)
+            draw_board(screen, state, font, back_button, stats_button)
             
             # Determine winner
             if state['score'][0] > state['score'][1]:

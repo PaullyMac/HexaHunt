@@ -15,20 +15,23 @@ HexaHunt is a strategic board game inspired by Dots and Boxes, played on a hexag
   - Move ordering optimization
   - Transposition table for cached positions
 - **Visualization System**:
-  - Real-time stats display showing AI thinking metrics
+  - Optional real-time stats display showing AI thinking metrics
   - Visual highlighting of AI's evaluation process
   - Color-coding for different evaluation states
+  - Toggle button to show/hide technical details
 - **Interactive UI**:
   - Main menu with multiple options
   - How to play guide
   - About section
   - Settings configuration
+  - Seamless navigation between game and menu
 - **Customization Options**:
   - Adjustable board size (radius 1-4)
   - Configurable AI difficulty (Easy, Medium, Hard)
 - **Responsive Design**:
   - Dynamic scaling of game elements based on window size
   - Persistent UI across different screen dimensions
+  - Properly centered game board regardless of window dimensions
 
 ## Implemented Algorithms
 
