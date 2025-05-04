@@ -1,5 +1,29 @@
 # Changelog
 
+## May 5, 2025
+
+### Added
+- Added custom application icon using logo.png
+- Added logo image to About screen
+- Added clickable GitHub links for all developers in About screen
+- Added detailed treasure and artifact descriptions in the How to Play screen
+- Added scrollable content for the How to Play screen to accommodate all game information
+- Added structured tables for treasures and artifacts with descriptions and point values
+
+### Fixed
+- Fixed initialization issues with CURRENT_HEIGHT variable
+- Fixed function ordering to ensure initialize_hexagons is defined before it's called
+- Fixed overlapping text in How to Play screen by increasing column spacing
+- Fixed shadow effect on text that was causing a "double font" appearance
+
+### Improved
+- Center-aligned text in About and How to Play screens for better visual appearance
+- Improved table formatting with clear column headers and horizontal separator lines
+- Enhanced scrolling experience in How to Play screen with mouse wheel support
+- Made all sections in How to Play screen properly structured and readable
+- Optimized spacing between columns in treasure and artifact tables
+- Made the How to Play title scroll with the content for better contextual navigation
+
 ## May 4, 2025
 
 ### Added
