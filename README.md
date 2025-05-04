@@ -39,7 +39,7 @@ HexaHunt is a strategic board game inspired by Dots and Boxes, played on a hexag
 
 ## Date Created
 
-This project was developed for the Introduction to Artificial Intelligence subject at the Polytechnic University of the Philippines during the Second Semester of Academic Year 2024-2025.
+This project was developed for the Introduction to Artificial Intelligence subject at the Polytechnic University of the Philippines during the Second Semester (April to June) of Academic Year 2024-2025.
 
 ## How to Run
 
