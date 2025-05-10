@@ -433,9 +433,16 @@ def draw_board(screen, state, font, back_button=None, stats_button=None):
                 pygame.draw.circle(screen, BLACK, scaled_vertex, int(4 * scale))
                 drawn_vertices.add(scaled_vertex)
     
-    # Draw score text at the bottom
-    score_text = font.render(f"Human: {state['score'][0]}  AI: {state['score'][1]}", True, BLACK)
-    screen.blit(score_text, (scaled_margin, CURRENT_HEIGHT - scaled_margin))
+    # Draw score text at the bottom - Human on left, AI on right
+    human_score_text = font.render(f"Human: {state['score'][0]}", True, BLUE)
+    ai_score_text = font.render(f"AI: {state['score'][1]}", True, RED)
+
+    # Place Human score at the left
+    screen.blit(human_score_text, (scaled_margin, CURRENT_HEIGHT - scaled_margin))
+
+    # Place AI score at the right side
+    ai_score_x = CURRENT_WIDTH - scaled_margin - ai_score_text.get_width()
+    screen.blit(ai_score_text, (ai_score_x, CURRENT_HEIGHT - scaled_margin))
     
     # Only draw AI stats if the show_stats flag is True
     if AI_STATS['show_stats']:
@@ -1016,12 +1023,28 @@ def draw_settings_screen(screen, font, settings, skip_display=False):
     # Board Radius Setting with shadow
     radius_text = render_text_with_shadow(
         f"Board Radius: {settings['board_radius']}", font, TITLE_TEXT)
+    radius_text_width = radius_text.get_width()
     screen.blit(radius_text, (text_x, text_y))
     
-    # Draw radius adjustment buttons
-    radius_left_button = settings['buttons']['settings'][1]  # Radius - button
-    radius_right_button = settings['buttons']['settings'][2]  # Radius + button
+    # Calculate proper positions for buttons to align them consistently
+    button_size = 50 * get_scale_factor()
+    button_spacing = 20 * get_scale_factor()
     
+    # Position the - button to start at a consistent distance from the text's right edge
+    minus_x = text_x + radius_text_width + button_spacing
+    plus_x = minus_x + button_size + button_spacing/2
+    
+    # Update positions of radius adjustment buttons
+    radius_left_button = settings['buttons']['settings'][1]
+    radius_right_button = settings['buttons']['settings'][2]
+    radius_left_button['rect'].x = minus_x
+    radius_left_button['rect'].y = text_y - (radius_left_button['rect'].height - radius_text.get_height())/2
+    radius_right_button['rect'].x = plus_x
+    radius_right_button['rect'].y = radius_left_button['rect'].y
+    radius_left_button['text_rect'].center = radius_left_button['rect'].center
+    radius_right_button['text_rect'].center = radius_right_button['rect'].center
+    
+    # Draw radius adjustment buttons
     draw_button(screen, radius_left_button, is_button_hovered(radius_left_button, pygame.mouse.get_pos()))
     draw_button(screen, radius_right_button, is_button_hovered(radius_right_button, pygame.mouse.get_pos()))
     
@@ -1031,10 +1054,17 @@ def draw_settings_screen(screen, font, settings, skip_display=False):
         font, TITLE_TEXT)
     screen.blit(difficulty_text, (text_x, text_y + line_height))
     
-    # Draw difficulty adjustment buttons
-    depth_left_button = settings['buttons']['settings'][3]  # Depth - button
-    depth_right_button = settings['buttons']['settings'][4]  # Depth + button
+    # Update positions of depth adjustment buttons - use same horizontal positions for alignment
+    depth_left_button = settings['buttons']['settings'][3]
+    depth_right_button = settings['buttons']['settings'][4]
+    depth_left_button['rect'].x = minus_x
+    depth_left_button['rect'].y = text_y + line_height - (depth_left_button['rect'].height - difficulty_text.get_height())/2
+    depth_right_button['rect'].x = plus_x
+    depth_right_button['rect'].y = depth_left_button['rect'].y
+    depth_left_button['text_rect'].center = depth_left_button['rect'].center
+    depth_right_button['text_rect'].center = depth_right_button['rect'].center
     
+    # Draw difficulty adjustment buttons
     draw_button(screen, depth_left_button, is_button_hovered(depth_left_button, pygame.mouse.get_pos()))
     draw_button(screen, depth_right_button, is_button_hovered(depth_right_button, pygame.mouse.get_pos()))
     
@@ -1522,7 +1552,9 @@ def main():
         button_height = 50 * get_scale_factor()
         button_spacing = 70 * get_scale_factor()
         start_y = CURRENT_HEIGHT//2
-        center_x = CURRENT_WIDTH//2 - button_width//2
+        
+        # Calculate center position - ensure buttons are always centered
+        center_x = (CURRENT_WIDTH - button_width) // 2
         
         # Opening screen buttons
         settings['buttons']['opening'] = [
@@ -1631,8 +1663,9 @@ def main():
         elif current_state == 'GAME_RUNNING':
             pygame.display.set_caption("HexaHunt - Playing Game")
             run_game_loop(screen, base_font, settings)
-            # After game ends, return to opening screen
+            # After game ends, return to opening screen and update buttons
             current_state = 'OPENING_SCREEN'
+            update_buttons()  # Add this line to recalculate button positions
         elif current_state == 'QUIT':
             running = False
         
