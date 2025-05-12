@@ -9,6 +9,13 @@
 - Improved validity checks throughout the minimax algorithm to ensure only valid moves are considered
 - Enhanced transposition table logic to verify cached moves are still valid in the current game state
 
+### Improved
+- Reduced animation image size to prevent overlapping with the hexagonal grid
+- Repositioned "AI is thinking" animation to appear at the bottom of the screen
+- Enhanced AI move selection with more robust validation to prevent duplicate moves
+- Added extra safeguards to prevent minimax from considering or returning invalid moves
+- Improved error handling and diagnostic messages for debugging AI move selection
+
 ## May 5, 2025
 
 ### Added

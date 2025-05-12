@@ -258,7 +258,7 @@ def hash_state(state):
     edge_tuples = tuple(sorted((edge, owner) for edge, owner in state['edges'].items()))
     return hash(edge_tuples)
 
-# Modified minimax with more robust validity checks
+# Modified minimax with stronger validity checks
 def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=None):
     """Minimax algorithm with alpha-beta pruning and transposition table"""
     if transposition_table is None:
@@ -275,7 +275,7 @@ def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=Non
         # Verify the cached move is still valid (not already played)
         if cached_move is None or (cached_move in state['edges'] and state['edges'][cached_move] == -1):
             return transposition_table[state_hash]['value'], cached_move
-        # If the cached move is no longer valid, continue with normal evaluation
+        # If cached move is invalid, don't use the cache at all - recalculate
     
     AI_STATS['positions_evaluated'] += 1
     
@@ -285,7 +285,11 @@ def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=Non
         AI_STATS['total_cache_size'] = len(transposition_table)
         return value, None
 
-    possible_moves = get_possible_moves(state)
+    # Get STRICTLY valid moves - double-checked to be unplayed
+    possible_moves = []
+    for move, owner in state['edges'].items():
+        if owner == -1:  # Definitely unplayed
+            possible_moves.append(move)
     
     # Safety check - if no valid moves, return current evaluation
     if not possible_moves:
@@ -1385,40 +1389,30 @@ def run_game_loop(screen, font, settings):
             if valid_moves:
                 _, move = minimax(state, DEPTH, -math.inf, math.inf, True, transposition_table)
                 
-                # Triple-check the move is valid
+                # Extra validation - quadruple check the move is valid
                 if move is None or move not in state['edges'] or state['edges'][move] != -1:
-                    print("AI attempted an invalid move, selecting random valid move")
-                    # Re-fetch valid moves to be absolutely sure
-                    valid_moves = get_possible_moves(state)
+                    print(f"AI attempted invalid move: {move}")
+                    # Re-fetch valid moves and pick a guaranteed valid one
+                    valid_moves = []
+                    for edge, owner in state['edges'].items():
+                        if owner == -1:  # Strictly unplayed edges only
+                            valid_moves.append(edge)
+                            
                     if valid_moves:
                         move = random.choice(valid_moves)
+                        print(f"Selected random valid move instead: {move}")
                     else:
                         continue  # No valid moves, skip to next loop iteration
-            else:
-                continue  # No valid moves, skip to next loop iteration
-            
-            # Calculate and store thinking time
-            AI_STATS['thinking_time'] = time.time() - start_time
-            
-            # Visualize the move chosen by the AI
-            if move is not None:
-                # Generate visualization data showing which edges were evaluated
-                possible_moves = get_possible_moves(state)
-                for edge in possible_moves:
-                    edge_hash = hash_state(apply_move(state, edge, 1)[0])
-                    if edge_hash in transposition_table:
-                        if edge == move:
-                            # Highlight the chosen move differently
-                            AI_STATS['visualization_edges'][edge] = 'chosen'
-                        else:
-                            AI_STATS['visualization_edges'][edge] = 'cache_hit'
                 
-                # Show visualization for a moment before making the move
-                draw_board(screen, state, font, back_button, stats_button)
-                pygame.display.flip()
-                pygame.time.delay(1000)  # Pause to show the visualization
+                # One final verification before applying the move
+                if state['edges'][move] != -1:
+                    print(f"CRITICAL: Move {move} already played! Owner: {state['edges'][move]}")
+                    continue  # Skip to next iteration - don't make an invalid move
+                    
+                # Calculate and store thinking time
+                AI_STATS['thinking_time'] = time.time() - start_time
                 
-                # Apply the AI's move
+                # Apply the AI's move - now guaranteed to be valid
                 new_state, extra_turn = apply_move(state, move, 1)
                 state = new_state
                 
@@ -1599,40 +1593,52 @@ def draw_transition(screen, next_screen_func, settings):
 
 # Add these functions after the other helper functions
 def load_animation_images():
-    """Load the animation image sequence from assets folder"""
+    """Load the animation image sequence from assets folder and pre-scale them smaller"""
     images = []
     try:
         for i in range(1, 5):
             path = os.path.join('assets', f"{i}.png")
-            img = pygame.image.load(path)
-            images.append(img)
+            original_img = pygame.image.load(path)
+            
+            # Pre-scale images to be much smaller (20% of original size)
+            original_width = original_img.get_width()
+            original_height = original_img.get_height()
+            new_width = int(original_width * 0.2)  # Reduced to 20% of original size
+            new_height = int(original_height * 0.2)  # Reduced to 20% of original size
+            
+            # Scale the image
+            scaled_img = pygame.transform.scale(original_img, (new_width, new_height))
+            images.append(scaled_img)
+            
         return images
     except pygame.error as e:
         print(f"Could not load animation images from assets folder: {e}")
         return None
 
 def draw_ai_thinking_animation(screen, current_frame, font):
-    """Draw the AI thinking animation and text below the center of the screen"""
+    """Draw the AI thinking animation and text at the bottom of the screen"""
     # Scale the image to a much smaller size (30% of original size)
-    scale = get_scale_factor() * 0.3  # Reduced from 0.7 to make it super small
+    scale = get_scale_factor() * 0.3
     img_width = int(current_frame.get_width() * scale)
     img_height = int(current_frame.get_height() * scale)
     
     # Create a scaled version of the image preserving transparency
     scaled_img = pygame.transform.scale(current_frame, (img_width, img_height))
     
-    # Position the image just below the center of the screen
+    # Position the image at the horizontal center and near the bottom of the screen
+    # (leaving space for text below it)
+    margin_from_bottom = 80 * get_scale_factor()  # Space from bottom of screen
     img_x = (CURRENT_WIDTH - img_width) // 2
-    img_y = (CURRENT_HEIGHT // 2) + 20 * get_scale_factor()  # Just below center
+    img_y = CURRENT_HEIGHT - margin_from_bottom - img_height
     
     # Draw the scaled image (preserves transparency)
     screen.blit(scaled_img, (img_x, img_y))
     
     # Draw "AI is Thinking" text below the image with smaller font
     thinking_font = pygame.font.SysFont(None, int(24 * get_scale_factor()))
-    thinking_text = thinking_font.render("AI is Thinking", True, RED)  # Fixed: RED for AI text
+    thinking_text = thinking_font.render("AI is Thinking", True, RED)
     text_x = (CURRENT_WIDTH - thinking_text.get_width()) // 2
-    text_y = img_y + img_height + 5 * get_scale_factor()
+    text_y = CURRENT_HEIGHT - margin_from_bottom + 10 * get_scale_factor()
     
     screen.blit(thinking_text, (text_x, text_y))
 
