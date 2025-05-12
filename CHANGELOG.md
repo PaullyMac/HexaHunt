@@ -1,5 +1,14 @@
 # Changelog
 
+## May 12, 2025
+
+### Fixed
+- Fixed critical game state preservation during window resize - player moves, scores, and turn states are now properly maintained
+- Enhanced edge mapping algorithm to properly translate edge positions between different window sizes
+- Fixed issue where AI would sometimes attempt to play on already claimed edges
+- Improved validity checks throughout the minimax algorithm to ensure only valid moves are considered
+- Enhanced transposition table logic to verify cached moves are still valid in the current game state
+
 ## May 5, 2025
 
 ### Added

@@ -4,8 +4,8 @@ import math
 import copy
 import time  # Add this import for time measurement
 import random
+import os
 from pygame import gfxdraw
-import webbrowser
 
 # ----- Constants & Board Configuration -----
 DEFAULT_WIDTH, DEFAULT_HEIGHT = 800, 800  # Increased default size
@@ -258,7 +258,7 @@ def hash_state(state):
     edge_tuples = tuple(sorted((edge, owner) for edge, owner in state['edges'].items()))
     return hash(edge_tuples)
 
-# Modified minimax with transposition table
+# Modified minimax with more robust validity checks
 def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=None):
     """Minimax algorithm with alpha-beta pruning and transposition table"""
     if transposition_table is None:
@@ -270,7 +270,12 @@ def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=Non
     # Check if this state is already in our table at sufficient depth
     if state_hash in transposition_table and transposition_table[state_hash]['depth'] >= depth:
         AI_STATS['cache_hits'] += 1
-        return transposition_table[state_hash]['value'], transposition_table[state_hash]['move']
+        cached_move = transposition_table[state_hash]['move']
+        
+        # Verify the cached move is still valid (not already played)
+        if cached_move is None or (cached_move in state['edges'] and state['edges'][cached_move] == -1):
+            return transposition_table[state_hash]['value'], cached_move
+        # If the cached move is no longer valid, continue with normal evaluation
     
     AI_STATS['positions_evaluated'] += 1
     
@@ -295,8 +300,8 @@ def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=Non
     if maximizingPlayer:
         maxEval = -math.inf
         for move in ordered_moves:
-            # Double-check the move is valid
-            if state['edges'][move] != -1:
+            # Double-check the move is valid - make sure edge exists and is unplayed
+            if move not in state['edges'] or state['edges'][move] != -1:
                 continue
                 
             new_state, extra_turn = apply_move(state, move, 1)
@@ -311,9 +316,9 @@ def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=Non
             if beta <= alpha:
                 break
         
-        # Safety check - if no best move was found, pick the first valid move
-        if best_move is None and ordered_moves:
-            best_move = ordered_moves[0]
+        # Safety check - if no best move was found, pick a valid move from possible_moves
+        if best_move is None and possible_moves:
+            best_move = possible_moves[0]
             
         transposition_table[state_hash] = {'value': maxEval, 'move': best_move, 'depth': depth}
         AI_STATS['total_cache_size'] = len(transposition_table)
@@ -321,8 +326,8 @@ def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=Non
     else:
         minEval = math.inf
         for move in ordered_moves:
-            # Double-check the move is valid
-            if state['edges'][move] != -1:
+            # Double-check the move is valid - make sure edge exists and is unplayed
+            if move not in state['edges'] or state['edges'][move] != -1:
                 continue
                 
             new_state, extra_turn = apply_move(state, move, 0)
@@ -337,9 +342,9 @@ def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=Non
             if beta <= alpha:
                 break
         
-        # Safety check - if no best move was found, pick the first valid move
-        if best_move is None and ordered_moves:
-            best_move = ordered_moves[0]
+        # Safety check - if no best move was found, pick a valid move from possible_moves
+        if best_move is None and possible_moves:
+            best_move = possible_moves[0]
             
         transposition_table[state_hash] = {'value': minEval, 'move': best_move, 'depth': depth}
         AI_STATS['total_cache_size'] = len(transposition_table)
@@ -388,7 +393,7 @@ def draw_board(screen, state, font, back_button=None, stats_button=None):
         if owner != -1:
             # Scale the vertices
             vertices = [scale_point(v) for v in state['cell_vertices'][cell]]
-            color = RED if owner == 0 else BLUE
+            color = BLUE if owner == 0 else RED  # Fixed: BLUE for human (0), RED for AI (1)
             pygame.draw.polygon(screen, color, vertices)
     
     # Draw edges with visualization highlights
@@ -407,7 +412,7 @@ def draw_board(screen, state, font, back_button=None, stats_button=None):
                 color = YELLOW
                 width = int(6 * scale)  # Make it slightly wider for emphasis
             else:
-                color = RED if owner == 0 else BLUE
+                color = BLUE if owner == 0 else RED  # Fixed: BLUE for human (0), RED for AI (1)
                 width = int(4 * scale)
         else:
             # Check if this edge is in our visualization dictionary and stats are visible
@@ -434,8 +439,8 @@ def draw_board(screen, state, font, back_button=None, stats_button=None):
                 drawn_vertices.add(scaled_vertex)
     
     # Draw score text at the bottom - Human on left, AI on right
-    human_score_text = font.render(f"Human: {state['score'][0]}", True, BLUE)
-    ai_score_text = font.render(f"AI: {state['score'][1]}", True, RED)
+    human_score_text = font.render(f"Human: {state['score'][0]}", True, BLUE)  # Correct: BLUE for human
+    ai_score_text = font.render(f"AI: {state['score'][1]}", True, RED)  # Correct: RED for AI
 
     # Place Human score at the left
     screen.blit(human_score_text, (scaled_margin, CURRENT_HEIGHT - scaled_margin))
@@ -451,10 +456,10 @@ def draw_board(screen, state, font, back_button=None, stats_button=None):
         stats_y = scaled_margin + 50 * scale  # Added 50 scaled pixels to move stats down below the button
         line_height = 30 * scale
         
-        stats_text = font.render(f"Time: {AI_STATS['thinking_time']:.3f}s", True, BLUE)
+        stats_text = font.render(f"Time: {AI_STATS['thinking_time']:.3f}s", True, RED)  # Fixed: RED for AI stats
         screen.blit(stats_text, (stats_x, stats_y))
         
-        cache_text = font.render(f"Cache: {AI_STATS['total_cache_size']} positions", True, BLUE)
+        cache_text = font.render(f"Cache: {AI_STATS['total_cache_size']} positions", True, RED)  # Fixed: RED for AI stats
         screen.blit(cache_text, (stats_x, stats_y + line_height))
         
         hits_text = font.render(f"Hits: {AI_STATS['cache_hits']}", True, LIGHT_GREEN)
@@ -466,7 +471,7 @@ def draw_board(screen, state, font, back_button=None, stats_button=None):
         # If we have both hits and evaluations, show efficiency
         if AI_STATS['positions_evaluated'] + AI_STATS['cache_hits'] > 0:
             efficiency = AI_STATS['cache_hits'] / (AI_STATS['positions_evaluated'] + AI_STATS['cache_hits']) * 100
-            eff_text = font.render(f"Efficiency: {efficiency:.1f}%", True, BLUE)
+            eff_text = font.render(f"Efficiency: {efficiency:.1f}%", True, RED)  # Fixed: RED for AI stats
             screen.blit(eff_text, (stats_x, stats_y + line_height * 4))
         
         # Add legend
@@ -1240,7 +1245,20 @@ def run_game_loop(screen, font, settings):
     # Set initial AI stats visibility to False
     AI_STATS['show_stats'] = False
     
+    # Load animation images and initialize animation state
+    animation_images = load_animation_images()
+    animation_frame = 0
+    last_animation_update = pygame.time.get_ticks()
+    ai_is_thinking = False
+    
     while running:
+        current_time = pygame.time.get_ticks()
+        
+        # Update animation frame every 0.7 seconds
+        if animation_images and current_time - last_animation_update > 700:
+            animation_frame = (animation_frame + 1) % len(animation_images)
+            last_animation_update = current_time
+        
         # Handle events (e.g. closing window, clicks, resize)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -1250,9 +1268,11 @@ def run_game_loop(screen, font, settings):
                 # Update current window size
                 CURRENT_WIDTH, CURRENT_HEIGHT = event.size
                 screen = pygame.display.set_mode((CURRENT_WIDTH, CURRENT_HEIGHT), pygame.RESIZABLE)
+                
                 # Recalculate font size based on new window size
                 font_size = int(28 * get_scale_factor())
                 font = pygame.font.SysFont(None, max(12, font_size))
+                
                 # Update button positions and sizes
                 button_font = pygame.font.SysFont(None, int(32 * get_scale_factor()))
                 back_button = create_button("Back", 20 * get_scale_factor(), 20 * get_scale_factor(), 
@@ -1261,8 +1281,48 @@ def run_game_loop(screen, font, settings):
                 stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 
                                            20 * get_scale_factor(), 120 * get_scale_factor(), 
                                            40 * get_scale_factor(), button_font)
+                
+                # Save current game progress before rebuilding
+                old_edges = state['edges'].copy()
+                old_cells = state['cells'].copy()
+                old_score = state['score'].copy()
+                old_turn = state['turn']
+                old_last_move = state['last_move']
+                # Save cell_edges mapping to help restore edges later
+                old_cell_edges = state['cell_edges'].copy()
+                
                 # Rebuild the game state to recenter the board
                 state = init_state(settings['board_radius'])
+                
+                # Restore cell claims first - this works because cell coordinates don't change
+                for cell, owner in old_cells.items():
+                    if owner != -1 and cell in state['cells']:
+                        state['cells'][cell] = owner
+                
+                # Map old edges to new edges based on their logical position in cell edge lists
+                edge_mapping = {}  # Will store old_edge -> new_edge mappings
+                
+                # For each cell, map edges based on their index in the cell's edge list
+                for cell, old_edges_list in old_cell_edges.items():
+                    if cell in state['cell_edges']:  # Make sure cell exists in new state
+                        new_edges_list = state['cell_edges'][cell]
+                        for i, old_edge in enumerate(old_edges_list):
+                            if i < len(new_edges_list):  # Safety check
+                                edge_mapping[old_edge] = new_edges_list[i]
+                
+                # Now restore edge ownership using our mapping
+                for old_edge, owner in old_edges.items():
+                    if owner != -1 and old_edge in edge_mapping:
+                        new_edge = edge_mapping[old_edge]
+                        state['edges'][new_edge] = owner
+                
+                # Update last_move if it exists
+                if old_last_move is not None and old_last_move in edge_mapping:
+                    state['last_move'] = edge_mapping[old_last_move]
+                
+                # Restore scores and turn
+                state['score'] = old_score
+                state['turn'] = old_turn
                 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
@@ -1293,6 +1353,7 @@ def run_game_loop(screen, font, settings):
 
         # AI turn
         if state['turn'] == 1:
+            ai_is_thinking = True  # Set flag to show animation
             pygame.display.set_caption("AI is thinking...")
             
             # Reset counters for this turn
@@ -1300,31 +1361,41 @@ def run_game_loop(screen, font, settings):
             AI_STATS['positions_evaluated'] = 0
             AI_STATS['visualization_edges'] = {}
             
-            # Small delay to show update and redraw the board
+            # Draw board and animation while AI is thinking
             draw_board(screen, state, font, back_button, stats_button)
-            pygame.time.delay(200)
+            if animation_images:
+                draw_ai_thinking_animation(screen, animation_images[animation_frame], font)
+            pygame.display.flip()
             
             # Double-check that there are valid moves available
             possible_moves = get_possible_moves(state)
             if not possible_moves:
                 print("No valid moves available for AI")
                 pygame.display.set_caption("HexaHunt - Hexagonal Dots and Boxes")
+                ai_is_thinking = False
                 continue
             
             # Record start time for AI thinking
             start_time = time.time()
             
-            # AI makes its move
-            _, move = minimax(state, DEPTH, -math.inf, math.inf, True, transposition_table)
-            
-            # Validate the AI's move
-            if move is None or state['edges'][move] != -1:
-                # AI selected an invalid move, select a random valid move instead
-                print("AI attempted an invalid move, selecting random valid move")
-                if possible_moves:
-                    move = possible_moves[0]
-                else:
-                    continue
+            # Get list of valid moves before even calling minimax
+            valid_moves = get_possible_moves(state)
+
+            # AI makes its move only if there are valid moves
+            if valid_moves:
+                _, move = minimax(state, DEPTH, -math.inf, math.inf, True, transposition_table)
+                
+                # Triple-check the move is valid
+                if move is None or move not in state['edges'] or state['edges'][move] != -1:
+                    print("AI attempted an invalid move, selecting random valid move")
+                    # Re-fetch valid moves to be absolutely sure
+                    valid_moves = get_possible_moves(state)
+                    if valid_moves:
+                        move = random.choice(valid_moves)
+                    else:
+                        continue  # No valid moves, skip to next loop iteration
+            else:
+                continue  # No valid moves, skip to next loop iteration
             
             # Calculate and store thinking time
             AI_STATS['thinking_time'] = time.time() - start_time
@@ -1352,8 +1423,16 @@ def run_game_loop(screen, font, settings):
                 state = new_state
                 
             pygame.display.set_caption("HexaHunt - Hexagonal Dots and Boxes")
+            ai_is_thinking = False  # AI is done thinking
 
+        # Draw the current game state
         draw_board(screen, state, font, back_button, stats_button)
+        
+        # Draw animation if AI is thinking
+        if ai_is_thinking and animation_images:
+            draw_ai_thinking_animation(screen, animation_images[animation_frame], font)
+            pygame.display.flip()
+            
         if is_terminal(state):
             # Final drawing and delay before returning to menu
             draw_board(screen, state, font, back_button, stats_button)
@@ -1517,6 +1596,45 @@ def draw_transition(screen, next_screen_func, settings):
         
         # Draw the alpha-adjusted surface to the screen
         screen.blit(target_surface, (0, 0))
+
+# Add these functions after the other helper functions
+def load_animation_images():
+    """Load the animation image sequence from assets folder"""
+    images = []
+    try:
+        for i in range(1, 5):
+            path = os.path.join('assets', f"{i}.png")
+            img = pygame.image.load(path)
+            images.append(img)
+        return images
+    except pygame.error as e:
+        print(f"Could not load animation images from assets folder: {e}")
+        return None
+
+def draw_ai_thinking_animation(screen, current_frame, font):
+    """Draw the AI thinking animation and text below the center of the screen"""
+    # Scale the image to a much smaller size (30% of original size)
+    scale = get_scale_factor() * 0.3  # Reduced from 0.7 to make it super small
+    img_width = int(current_frame.get_width() * scale)
+    img_height = int(current_frame.get_height() * scale)
+    
+    # Create a scaled version of the image preserving transparency
+    scaled_img = pygame.transform.scale(current_frame, (img_width, img_height))
+    
+    # Position the image just below the center of the screen
+    img_x = (CURRENT_WIDTH - img_width) // 2
+    img_y = (CURRENT_HEIGHT // 2) + 20 * get_scale_factor()  # Just below center
+    
+    # Draw the scaled image (preserves transparency)
+    screen.blit(scaled_img, (img_x, img_y))
+    
+    # Draw "AI is Thinking" text below the image with smaller font
+    thinking_font = pygame.font.SysFont(None, int(24 * get_scale_factor()))
+    thinking_text = thinking_font.render("AI is Thinking", True, RED)  # Fixed: RED for AI text
+    text_x = (CURRENT_WIDTH - thinking_text.get_width()) // 2
+    text_y = img_y + img_height + 5 * get_scale_factor()
+    
+    screen.blit(thinking_text, (text_x, text_y))
 
 # ----- New Main Function with State Machine -----
 def main():
