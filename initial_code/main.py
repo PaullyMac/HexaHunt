@@ -11,7 +11,6 @@ from ai import minimax
 
 
 # ----- Constants & Board Configuration -----
-ITEM_ICONS = {}  # Global dictionary for item icons
 DEFAULT_WIDTH, DEFAULT_HEIGHT = 800, 800  # Increased default size
 CURRENT_WIDTH, CURRENT_HEIGHT = DEFAULT_WIDTH, DEFAULT_HEIGHT
 TOLERANCE = 10                   # Pixel tolerance for clicking on an edge
@@ -128,20 +127,10 @@ def draw_board(screen, state, font, back_button=None, stats_button=None, logo_ta
     # Fill claimed cells
     for cell, owner in state['cells'].items():
         if owner != -1:
+            # Scale the vertices
             vertices = [scale_point(v) for v in state['cell_vertices'][cell]]
-            color = BLUE if owner == 0 else RED
+            color = BLUE if owner == 0 else RED  # Fixed: BLUE for human (0), RED for AI (1)
             pygame.draw.polygon(screen, color, vertices)
-
-            # 🎯 Draw item icon if any
-            if cell in state['claimed_items']:
-                item = state['claimed_items'][cell]
-                if item in ITEM_ICONS:
-                    icon = ITEM_ICONS[item]
-                    # Center the icon on the hexagon
-                    cx = sum(v[0] for v in vertices) / 6
-                    cy = sum(v[1] for v in vertices) / 6
-                    rect = icon.get_rect(center=(cx, cy))
-                    screen.blit(icon, rect)
     
     # Draw edges with visualization highlights
     for edge, owner in state['edges'].items():
@@ -981,8 +970,6 @@ def handle_settings_events(event, settings):
 # ----- Original Game Loop (renamed) -----
 def run_game_loop(screen, font, settings):
     """Main game loop (former main function)"""
-    message = ""
-    message_timer = 0
     global CURRENT_WIDTH, CURRENT_HEIGHT, DEPTH
     
     # Apply settings
@@ -991,8 +978,6 @@ def run_game_loop(screen, font, settings):
     clock = pygame.time.Clock()
     scale = get_scale_factor()
     state = init_state(settings['board_radius'], HEX_SIZE, scale)
-    message = ""
-    message_timer = 0
     running = True
 
     # Load logo tagline image
@@ -1131,21 +1116,6 @@ def run_game_loop(screen, font, settings):
                     if move is not None:
                         new_state, extra_turn = apply_move(state, move, 0)
                         state = new_state
-
-                        # Newly inserted - RJ
-                        if new_state['last_move']:
-                            for cell in new_state['edge_cells'][new_state['last_move']]:
-                                if cell in new_state['claimed_items']:
-                                    item = new_state['claimed_items'][cell]
-                                    if item == "compass":
-                                        message = "🔄 Compass of Portals activated!"
-                                        message_timer = pygame.time.get_ticks()
-                                    elif item == "gauntlet":
-                                        message = "🧤 Shadow Gauntlet: You stole points!"
-                                        message_timer = pygame.time.get_ticks()
-                                    elif item == "hourglass":
-                                        message = "⏳ Hourglass: Extra turn granted!"
-                                        message_timer = pygame.time.get_ticks()
                         draw_board(screen, state, font, back_button, stats_button, logo_tagline)
                         # Reset visualization edges after human move
                         AI_STATS['visualization_edges'] = {}
@@ -1210,20 +1180,6 @@ def run_game_loop(screen, font, settings):
                 # Apply the AI's move - now guaranteed to be valid
                 new_state, extra_turn = apply_move(state, move, 1)
                 state = new_state
-                if new_state['last_move']:
-                    for cell in new_state['edge_cells'][new_state['last_move']]:
-                        if cell in new_state['claimed_items']:
-                            item = new_state['claimed_items'][cell]
-                            if item == "compass":
-                                message = "🔄 Compass of Portals activated!"
-                                message_timer = pygame.time.get_ticks()
-                            elif item == "gauntlet":
-                                message = "🧤 Shadow Gauntlet: You stole points!"
-                                message_timer = pygame.time.get_ticks()
-                            elif item == "hourglass":
-                                message = "⏳ Hourglass: Extra turn granted!"
-                                message_timer = pygame.time.get_ticks()
-
                 
             pygame.display.set_caption("HexaHunt - Hexagonal Dots and Boxes")
             ai_is_thinking = False  # AI is done thinking
@@ -1254,10 +1210,7 @@ def run_game_loop(screen, font, settings):
             pygame.display.flip()
             pygame.time.delay(3000)
             return
-        
-        if message and pygame.time.get_ticks() - message_timer < 2000:
-            popup_surface = font.render(message, True, (255, 255, 0))
-            screen.blit(popup_surface, (CURRENT_WIDTH // 2 - popup_surface.get_width() // 2, 10))
+            
         clock.tick(30)
         
 # ----- Hexagon Background Animation -----
@@ -1455,22 +1408,10 @@ def draw_ai_thinking_animation(screen, current_frame, font):
     
     screen.blit(thinking_text, (text_x, text_y))
 
-
-
-def load_item_icons():
-    icons = {}
-    names = ['copper', 'silver', 'gold', 'platinum', 'diamond', 'hourglass', 'gauntlet', 'compass']
-    for name in names:
-        try:
-            img = pygame.image.load(f'assets/{name}.png').convert_alpha()
-            icons[name] = pygame.transform.scale(img, (32, 32))
-        except Exception as e:
-            print(f"Error loading {name}.png: {e}")
-    return icons
-
 # ----- New Main Function with State Machine -----
 def main():
-    global CURRENT_WIDTH, CURRENT_HEIGHT, base_font, button_font, ITEM_ICONS
+    global CURRENT_WIDTH, CURRENT_HEIGHT, base_font, button_font
+    
     pygame.init()
     
     # Set custom window icon
@@ -1481,7 +1422,6 @@ def main():
         print("Could not load icon image 'logo.png'")
     
     screen = pygame.display.set_mode((DEFAULT_WIDTH, DEFAULT_HEIGHT), pygame.RESIZABLE)
-    ITEM_ICONS = load_item_icons()
     pygame.display.set_caption("HexaHunt")
     
     # Initialize fonts

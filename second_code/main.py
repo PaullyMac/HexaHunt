@@ -981,8 +981,6 @@ def handle_settings_events(event, settings):
 # ----- Original Game Loop (renamed) -----
 def run_game_loop(screen, font, settings):
     """Main game loop (former main function)"""
-    message = ""
-    message_timer = 0
     global CURRENT_WIDTH, CURRENT_HEIGHT, DEPTH
     
     # Apply settings
@@ -991,8 +989,6 @@ def run_game_loop(screen, font, settings):
     clock = pygame.time.Clock()
     scale = get_scale_factor()
     state = init_state(settings['board_radius'], HEX_SIZE, scale)
-    message = ""
-    message_timer = 0
     running = True
 
     # Load logo tagline image
@@ -1131,21 +1127,6 @@ def run_game_loop(screen, font, settings):
                     if move is not None:
                         new_state, extra_turn = apply_move(state, move, 0)
                         state = new_state
-
-                        # Newly inserted - RJ
-                        if new_state['last_move']:
-                            for cell in new_state['edge_cells'][new_state['last_move']]:
-                                if cell in new_state['claimed_items']:
-                                    item = new_state['claimed_items'][cell]
-                                    if item == "compass":
-                                        message = "🔄 Compass of Portals activated!"
-                                        message_timer = pygame.time.get_ticks()
-                                    elif item == "gauntlet":
-                                        message = "🧤 Shadow Gauntlet: You stole points!"
-                                        message_timer = pygame.time.get_ticks()
-                                    elif item == "hourglass":
-                                        message = "⏳ Hourglass: Extra turn granted!"
-                                        message_timer = pygame.time.get_ticks()
                         draw_board(screen, state, font, back_button, stats_button, logo_tagline)
                         # Reset visualization edges after human move
                         AI_STATS['visualization_edges'] = {}
@@ -1210,20 +1191,6 @@ def run_game_loop(screen, font, settings):
                 # Apply the AI's move - now guaranteed to be valid
                 new_state, extra_turn = apply_move(state, move, 1)
                 state = new_state
-                if new_state['last_move']:
-                    for cell in new_state['edge_cells'][new_state['last_move']]:
-                        if cell in new_state['claimed_items']:
-                            item = new_state['claimed_items'][cell]
-                            if item == "compass":
-                                message = "🔄 Compass of Portals activated!"
-                                message_timer = pygame.time.get_ticks()
-                            elif item == "gauntlet":
-                                message = "🧤 Shadow Gauntlet: You stole points!"
-                                message_timer = pygame.time.get_ticks()
-                            elif item == "hourglass":
-                                message = "⏳ Hourglass: Extra turn granted!"
-                                message_timer = pygame.time.get_ticks()
-
                 
             pygame.display.set_caption("HexaHunt - Hexagonal Dots and Boxes")
             ai_is_thinking = False  # AI is done thinking
@@ -1254,10 +1221,7 @@ def run_game_loop(screen, font, settings):
             pygame.display.flip()
             pygame.time.delay(3000)
             return
-        
-        if message and pygame.time.get_ticks() - message_timer < 2000:
-            popup_surface = font.render(message, True, (255, 255, 0))
-            screen.blit(popup_surface, (CURRENT_WIDTH // 2 - popup_surface.get_width() // 2, 10))
+            
         clock.tick(30)
         
 # ----- Hexagon Background Animation -----
