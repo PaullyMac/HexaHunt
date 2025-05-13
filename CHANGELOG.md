@@ -8,6 +8,11 @@
 - Added error handling with text fallback if logo image fails to load
 - Increased spacing between logo and subtitle text for improved layout
 - Enhanced visual identity by implementing graphical elements instead of text
+- Increased hexagonal grid size for better visibility on all board sizes
+- Dynamically scaled hexagons based on board radius to optimize display
+- Fixed gradient rendering in background by adding missing parameters
+- Ensured hexagons are properly connected with no gaps between cells
+- Improved board positioning and centering for all window sizes
 
 ## May 12, 2025
 
