@@ -1,5 +1,30 @@
 # Changelog
 
+## May 13, 2025
+
+### Improved
+- Replaced text title "HexaHunt" with a custom logo image in the main menu
+- Increased logo size for better visibility and visual appeal
+- Added error handling with text fallback if logo image fails to load
+- Increased spacing between logo and subtitle text for improved layout
+- Enhanced visual identity by implementing graphical elements instead of text
+
+## May 12, 2025
+
+### Fixed
+- Fixed critical game state preservation during window resize - player moves, scores, and turn states are now properly maintained
+- Enhanced edge mapping algorithm to properly translate edge positions between different window sizes
+- Fixed issue where AI would sometimes attempt to play on already claimed edges
+- Improved validity checks throughout the minimax algorithm to ensure only valid moves are considered
+- Enhanced transposition table logic to verify cached moves are still valid in the current game state
+
+### Improved
+- Reduced animation image size to prevent overlapping with the hexagonal grid
+- Repositioned "AI is thinking" animation to appear at the bottom of the screen
+- Enhanced AI move selection with more robust validation to prevent duplicate moves
+- Added extra safeguards to prevent minimax from considering or returning invalid moves
+- Improved error handling and diagnostic messages for debugging AI move selection
+
 ## May 5, 2025
 
 ### Added
