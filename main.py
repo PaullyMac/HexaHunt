@@ -13,7 +13,7 @@ CURRENT_WIDTH, CURRENT_HEIGHT = DEFAULT_WIDTH, DEFAULT_HEIGHT
 TOLERANCE = 10                   # Pixel tolerance for clicking on an edge
 DEPTH = 3                        # Depth for the minimax search
 BOARD_RADIUS = 2                 # Board "radius" for hex board: cells with max(|q|,|r|,|s|)<=3
-HEX_SIZE = 40                    # Size of each hexagon
+HEX_SIZE = 60                    # Size of each hexagon
 MARGIN = 50                      # Margin from window edge to the board
 SPACING = 100                    # Distance between adjacent dots
 
@@ -82,7 +82,17 @@ def scale_point(point, scale_factor=None):
 
 def scale_hex_size():
     """Scale the hexagon size based on the window size"""
-    return HEX_SIZE * get_scale_factor()
+    radius_scale_factor = 1.0
+    if BOARD_RADIUS == 3:
+        radius_scale_factor = 0.8
+    elif BOARD_RADIUS == 4:
+        radius_scale_factor = 0.65
+    
+    # Use a larger base size for smaller boards
+    if BOARD_RADIUS == 1:
+        radius_scale_factor = 1.5
+        
+    return HEX_SIZE * get_scale_factor() * radius_scale_factor
 
 # ----- Hex Geometry Helper Functions (Updated for scaling) -----
 def axial_to_pixel(q, r, offset_x=0, offset_y=0):
@@ -122,10 +132,24 @@ def init_state(board_radius=None):
     This version computes a bounding box for the board (with no offset) and then
     calculates an additional offset to center the board in the window.
     """
-    global BOARD_RADIUS
+    global BOARD_RADIUS, HEX_SIZE
     if board_radius is not None:
         BOARD_RADIUS = board_radius
         
+    # Dynamically adjust hex size based on board radius to ensure it fits properly
+    # Larger radius = smaller hexagons to fit everything
+    radius_scale_factor = 1.0
+    if BOARD_RADIUS == 3:
+        radius_scale_factor = 0.8
+    elif BOARD_RADIUS == 4:
+        radius_scale_factor = 0.65
+    
+    # Use a larger base size for smaller boards
+    if BOARD_RADIUS == 1:
+        radius_scale_factor = 1.5
+    
+    current_hex_size = HEX_SIZE * radius_scale_factor * get_scale_factor()
+    
     # First pass: compute vertices for each valid hex cell with no offset.
     temp_vertices = {}
     valid_cells = []
@@ -134,8 +158,10 @@ def init_state(board_radius=None):
             s = -q - r
             if max(abs(q), abs(r), abs(s)) <= BOARD_RADIUS:
                 valid_cells.append((q, r))
-                center = axial_to_pixel(q, r, 0, 0)
-                vertices = polygon_vertices(center, HEX_SIZE)
+                # Use actual spacing values based on hex size instead of fixed values
+                center_x = current_hex_size * math.sqrt(3) * (q + r/2)
+                center_y = current_hex_size * 3/2 * r
+                vertices = polygon_vertices((center_x, center_y), current_hex_size)
                 temp_vertices[(q, r)] = vertices
 
     # Compute bounding box (min/max x and y) from all vertices.
@@ -152,13 +178,13 @@ def init_state(board_radius=None):
 
     # Compute offsets to center the board in the window.
     # Calculate the available area, accounting for the top UI elements (buttons)
-    top_ui_height = 70  # Approximate height for top UI elements
-    WIDTH = CURRENT_WIDTH - 2 * MARGIN
-    HEIGHT = CURRENT_HEIGHT - 2 * MARGIN - top_ui_height
+    top_ui_height = 70 * get_scale_factor()  # Approximate height for top UI elements
+    WIDTH = CURRENT_WIDTH - 2 * MARGIN * get_scale_factor()
+    HEIGHT = CURRENT_HEIGHT - 2 * MARGIN * get_scale_factor() - top_ui_height
     
     # Calculate offsets that will center the board in the available space
-    offset_x = (WIDTH - board_width) / 2 + MARGIN - min_x
-    offset_y = (HEIGHT - board_height) / 2 + MARGIN + top_ui_height - min_y
+    offset_x = (WIDTH - board_width) / 2 + MARGIN * get_scale_factor() - min_x
+    offset_y = (HEIGHT - board_height) / 2 + MARGIN * get_scale_factor() + top_ui_height - min_y
 
     # Build final state using the computed offset.
     state = {}
@@ -170,8 +196,11 @@ def init_state(board_radius=None):
 
     for cell in valid_cells:
         q, r = cell
-        center = axial_to_pixel(q, r, offset_x, offset_y)
-        vertices = polygon_vertices(center, HEX_SIZE)
+        # Direct calculation rather than using axial_to_pixel to ensure consistency
+        center_x = current_hex_size * math.sqrt(3) * (q + r/2) + offset_x
+        center_y = current_hex_size * 3/2 * r + offset_y
+        center = (center_x, center_y)
+        vertices = polygon_vertices(center, current_hex_size)
         state['cells'][(q, r)] = -1  # Unclaimed
         state['cell_vertices'][(q, r)] = vertices
         cell_edge_list = []
@@ -1570,6 +1599,7 @@ def create_gradient_surface(width, height, color_top, color_bottom):
         b = int(color_top[2] * (1 - factor) + color_bottom[2] * factor)
         
         # Draw a horizontal line with the calculated color
+        # Fixed: Added missing end_pos parameter (width, y)
         pygame.draw.line(surface, (r, g, b), (0, y), (width, y))
     
     return surface
