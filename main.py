@@ -384,13 +384,18 @@ def order_moves(state, moves, maximizing_player):
         return [move for move, score in sorted(move_scores, key=lambda x: x[1])]
 
 # ----- Updated Drawing Function -----
-def draw_board(screen, state, font, back_button=None, stats_button=None):
+def draw_board(screen, state, font, back_button=None, stats_button=None, logo_tagline=None):
     """
     Render the board with visualization of the AI's thinking process.
     """
     screen.fill(WHITE)
     scale = get_scale_factor()
     scaled_margin = MARGIN * scale
+    
+    # Draw logo tagline at top center if available
+    if logo_tagline:
+        logo_rect = logo_tagline.get_rect(center=(CURRENT_WIDTH // 2, 30 * scale))
+        screen.blit(logo_tagline, logo_rect)
     
     # Fill claimed cells
     for cell, owner in state['cells'].items():
@@ -656,12 +661,25 @@ def draw_opening_screen(screen, font, button_font, settings, skip_display=False)
     title_font = pygame.font.SysFont(None, int(70 * get_scale_factor()))
     subtitle_font = pygame.font.SysFont(None, int(30 * get_scale_factor()))
     
-    title = render_text_with_shadow("HexaHunt", title_font, TITLE_TEXT)
+    try:
+        # Load the logo image
+        logo_img = pygame.image.load('logo (without text).png')
+        
+        # Scale the logo to a larger size
+        logo_height = int(110 * get_scale_factor())  # Increased from 70 to 110
+        logo_width = int(logo_img.get_width() * (logo_height / logo_img.get_height()))
+        title = pygame.transform.scale(logo_img, (logo_width, logo_height))
+    except Exception as e:
+        print(f"Error loading logo image: {e}")
+        # Fall back to text rendering if image fails to load
+        title = render_text_with_shadow("HexaHunt", title_font, TITLE_TEXT)
+    
     subtitle = render_text_with_shadow("A Treasure Hunting Game using Minimax Algorithm", 
                                      subtitle_font, BODY_TEXT)
     
     title_rect = title.get_rect(center=(CURRENT_WIDTH//2, CURRENT_HEIGHT//4))
-    subtitle_rect = subtitle.get_rect(center=(CURRENT_WIDTH//2, CURRENT_HEIGHT//4 + 60 * get_scale_factor()))
+    # Increased spacing between logo and subtitle
+    subtitle_rect = subtitle.get_rect(center=(CURRENT_WIDTH//2, CURRENT_HEIGHT//4 + 90 * get_scale_factor()))
     
     screen.blit(title, title_rect)
     screen.blit(subtitle, subtitle_rect)
@@ -1024,25 +1042,26 @@ def draw_settings_screen(screen, font, settings, skip_display=False):
     title_rect = title.get_rect(center=(CURRENT_WIDTH//2, 60 * get_scale_factor()))
     screen.blit(title, title_rect)
     
-    # Settings content
-    text_x = CURRENT_WIDTH // 4
+    # Settings content - fixed positioning for buttons
+    text_x = CURRENT_WIDTH // 4  # Left-aligned text
     text_y = 150 * get_scale_factor()
     line_height = int(40 * get_scale_factor())
-    
+    row_spacing = 15 * get_scale_factor()  # Extra spacing between setting rows
+
+    # Calculate a fixed position for buttons on the right side
+    button_size = 50 * get_scale_factor()
+    button_spacing = 20 * get_scale_factor()
+    buttons_x = CURRENT_WIDTH * 0.6  # Position buttons at 60% of screen width
+
+    # Position the - and + buttons with consistent spacing
+    minus_x = buttons_x
+    plus_x = minus_x + button_size + button_spacing
+
     # Board Radius Setting with shadow
     radius_text = render_text_with_shadow(
         f"Board Radius: {settings['board_radius']}", font, TITLE_TEXT)
-    radius_text_width = radius_text.get_width()
     screen.blit(radius_text, (text_x, text_y))
-    
-    # Calculate proper positions for buttons to align them consistently
-    button_size = 50 * get_scale_factor()
-    button_spacing = 20 * get_scale_factor()
-    
-    # Position the - button to start at a consistent distance from the text's right edge
-    minus_x = text_x + radius_text_width + button_spacing
-    plus_x = minus_x + button_size + button_spacing/2
-    
+
     # Update positions of radius adjustment buttons
     radius_left_button = settings['buttons']['settings'][1]
     radius_right_button = settings['buttons']['settings'][2]
@@ -1052,22 +1071,22 @@ def draw_settings_screen(screen, font, settings, skip_display=False):
     radius_right_button['rect'].y = radius_left_button['rect'].y
     radius_left_button['text_rect'].center = radius_left_button['rect'].center
     radius_right_button['text_rect'].center = radius_right_button['rect'].center
-    
+
     # Draw radius adjustment buttons
     draw_button(screen, radius_left_button, is_button_hovered(radius_left_button, pygame.mouse.get_pos()))
     draw_button(screen, radius_right_button, is_button_hovered(radius_right_button, pygame.mouse.get_pos()))
-    
-    # AI Difficulty Setting with shadow
+
+    # AI Difficulty Setting with shadow - add extra spacing between rows
     difficulty_text = render_text_with_shadow(
         f"AI Depth: {settings['ai_depth']} ({get_difficulty_text(settings['ai_depth'])})", 
         font, TITLE_TEXT)
-    screen.blit(difficulty_text, (text_x, text_y + line_height))
-    
+    screen.blit(difficulty_text, (text_x, text_y + line_height + row_spacing))
+
     # Update positions of depth adjustment buttons - use same horizontal positions for alignment
     depth_left_button = settings['buttons']['settings'][3]
     depth_right_button = settings['buttons']['settings'][4]
     depth_left_button['rect'].x = minus_x
-    depth_left_button['rect'].y = text_y + line_height - (depth_left_button['rect'].height - difficulty_text.get_height())/2
+    depth_left_button['rect'].y = text_y + line_height + row_spacing - (depth_left_button['rect'].height - difficulty_text.get_height())/2
     depth_right_button['rect'].x = plus_x
     depth_right_button['rect'].y = depth_left_button['rect'].y
     depth_left_button['text_rect'].center = depth_left_button['rect'].center
@@ -1233,6 +1252,17 @@ def run_game_loop(screen, font, settings):
     state = init_state(settings['board_radius'])
     running = True
 
+    # Load logo tagline image
+    try:
+        logo_tagline = pygame.image.load(os.path.join('assets', 'logo_tagline.png'))
+        # Scale logo appropriately (adjust the multiplier as needed)
+        logo_height = int(60 * get_scale_factor())
+        logo_width = int(logo_tagline.get_width() * (logo_height / logo_tagline.get_height()))
+        logo_tagline = pygame.transform.scale(logo_tagline, (logo_width, logo_height))
+    except pygame.error as e:
+        print(f"Could not load logo tagline image: {e}")
+        logo_tagline = None
+
     # Create a transposition table that persists between moves
     transposition_table = {}
     
@@ -1285,6 +1315,12 @@ def run_game_loop(screen, font, settings):
                 stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 
                                            20 * get_scale_factor(), 120 * get_scale_factor(), 
                                            40 * get_scale_factor(), button_font)
+                
+                # Update logo tagline size
+                if logo_tagline:
+                    logo_height = int(60 * get_scale_factor())
+                    logo_width = int(logo_tagline.get_width() * (logo_height / logo_tagline.get_height()))
+                    logo_tagline = pygame.transform.scale(logo_tagline, (logo_width, logo_height))
                 
                 # Save current game progress before rebuilding
                 old_edges = state['edges'].copy()
@@ -1351,7 +1387,7 @@ def run_game_loop(screen, font, settings):
                     if move is not None:
                         new_state, extra_turn = apply_move(state, move, 0)
                         state = new_state
-                        draw_board(screen, state, font, back_button, stats_button)
+                        draw_board(screen, state, font, back_button, stats_button, logo_tagline)
                         # Reset visualization edges after human move
                         AI_STATS['visualization_edges'] = {}
 
@@ -1366,7 +1402,7 @@ def run_game_loop(screen, font, settings):
             AI_STATS['visualization_edges'] = {}
             
             # Draw board and animation while AI is thinking
-            draw_board(screen, state, font, back_button, stats_button)
+            draw_board(screen, state, font, back_button, stats_button, logo_tagline)
             if animation_images:
                 draw_ai_thinking_animation(screen, animation_images[animation_frame], font)
             pygame.display.flip()
@@ -1420,7 +1456,7 @@ def run_game_loop(screen, font, settings):
             ai_is_thinking = False  # AI is done thinking
 
         # Draw the current game state
-        draw_board(screen, state, font, back_button, stats_button)
+        draw_board(screen, state, font, back_button, stats_button, logo_tagline)
         
         # Draw animation if AI is thinking
         if ai_is_thinking and animation_images:
@@ -1429,7 +1465,7 @@ def run_game_loop(screen, font, settings):
             
         if is_terminal(state):
             # Final drawing and delay before returning to menu
-            draw_board(screen, state, font, back_button, stats_button)
+            draw_board(screen, state, font, back_button, stats_button, logo_tagline)
             
             # Determine winner
             if state['score'][0] > state['score'][1]:

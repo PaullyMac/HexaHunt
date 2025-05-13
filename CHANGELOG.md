@@ -1,5 +1,14 @@
 # Changelog
 
+## May 13, 2025
+
+### Improved
+- Replaced text title "HexaHunt" with a custom logo image in the main menu
+- Increased logo size for better visibility and visual appeal
+- Added error handling with text fallback if logo image fails to load
+- Increased spacing between logo and subtitle text for improved layout
+- Enhanced visual identity by implementing graphical elements instead of text
+
 ## May 12, 2025
 
 ### Fixed
