@@ -64,6 +64,12 @@ def init_state(board_radius, hex_size, scale):
         'treasures': {},
         'artifacts': {},
         'claimed_items': {},
+        'gauntlet_available': {0: False, 1: False},
+        'gauntlet_timer':     {0: 0,     1: 0},
+        'gauntlet_cell':      {0: None,  1: None},
+        'last_treasure_value': {0: 0, 1: 0},
+        'compass_available': {0: False, 1: False},
+        'compass_cell': {0: None, 1: None},
     }
 
     for cell in valid_cells:
@@ -109,68 +115,144 @@ def get_possible_moves(state):
     return [edge for edge, owner in state['edges'].items() if owner == -1]
 
 def apply_move(state, move, player):
+    """Apply a move and manage artifacts/tracking."""
     new_state = copy.deepcopy(state)
-    extra_turn = False
+    # Ensure tracking dicts exist
+    new_state.setdefault('gauntlet_available', {0: False, 1: False})
+    new_state.setdefault('gauntlet_timer',     {0: 0,     1: 0})
+    new_state.setdefault('gauntlet_cell',      {0: None,  1: None})
+    new_state.setdefault('hourglass_bonus',    {0: 0,     1: 0})
+    # Decrement gauntlet lifespan if held
+    if new_state['gauntlet_available'][player] and new_state['gauntlet_timer'][player] > 0:
+        new_state['gauntlet_timer'][player] -= 1
+        print(f"DEBUG: Gauntlet turns left for player {player}: {new_state['gauntlet_timer'][player]}")
+        if new_state['gauntlet_timer'][player] == 0:
+            # Remove expired gauntlet
+            cell0 = new_state['gauntlet_cell'][player]
+            new_state['artifacts'].pop(cell0, None)
+            new_state['claimed_items'].pop(cell0, None)
+            new_state['gauntlet_available'][player] = False
+            new_state['gauntlet_cell'][player] = None
+            print(f"DEBUG: Gauntlet expired for player {player}")
 
-    if new_state['edges'][move] != -1:
-        print(f"Invalid move: {move} already taken.")
-        return new_state, False
-
+    # Mark the edge
     new_state['edges'][move] = player
-    new_state['last_move'] = move
-
+    extra_turn = False
+    # Check each adjacent cell for completion
     for cell in new_state['edge_cells'][move]:
-        if new_state['cells'][cell] == -1:
-            if all(new_state['edges'][e] != -1 for e in new_state['cell_edges'][cell]):
-                new_state['cells'][cell] = player
-                extra_turn = True
+        if new_state['cells'][cell] == -1 and all(new_state['edges'][e] != -1 for e in new_state['cell_edges'][cell]):
+            new_state['cells'][cell] = player
+            extra_turn = True
+            print(f"DEBUG: Player {player} completed cell {cell}")
+            # Treasure logic...
+            if cell in new_state.get('treasures', {}):
+                t = new_state['treasures'][cell]
+                v = TREASURES[t]
+                new_state['score'][player] += v
+                new_state['claimed_items'][cell] = t
+                new_state['last_treasure_value'][player] = v
+                print(f"DEBUG: Treasure '{t}' (value {v}) claimed at {cell}")
+            # Artifact logic
+            if cell in new_state.get('artifacts', {}):
+                a = new_state['artifacts'][cell]
+                new_state['claimed_items'][cell] = a
+                print(f"DEBUG: Artifact '{a}' claimed at {cell}")
+                if a == 'hourglass':
+                    # Give original extra turn and one bonus
+                    extra_turn = True
+                    new_state['hourglass_bonus'][player] += 1
+                    print(f"DEBUG: Hourglass bonus granted for player {player}")
+                elif a == 'gauntlet':
+                    new_state['gauntlet_available'][player] = True
+                    new_state['gauntlet_timer'][player] = 5
+                    new_state['gauntlet_cell'][player] = cell
+                    new_state['artifacts'].pop(cell, None)
+                    new_state['claimed_items'].pop(cell, None)
+                    print(f"DEBUG: Gauntlet picked up at {cell}, lifespan=5")
+                elif a == 'compass':
+                    new_state['compass_available'][player] = True
+                    new_state['compass_cell'][player] = cell
+                    print(f"DEBUG: Compass now available for player {player}")
 
-                # Handle treasures
-                if cell in new_state['treasures']:
-                    t = new_state['treasures'][cell]
-                    new_state['score'][player] += TREASURES[t]
-                    new_state['claimed_items'][cell] = t
+    # Apply any hourglass bonus (extra move beyond the usual)
+    if new_state['hourglass_bonus'][player] > 0:
+        extra_turn = True
+        new_state['hourglass_bonus'][player] -= 1
+        print(f"DEBUG: Using hourglass bonus extra turn, remaining bonus: {new_state['hourglass_bonus'][player]}")
 
-                # Handle artifacts
-                elif cell in new_state['artifacts']:
-                    a = new_state['artifacts'][cell]
-                    new_state['claimed_items'][cell] = a
-
-                    if a == 'hourglass':
-                        extra_turn = True
-                    elif a == 'gauntlet':
-                        opponent = 1 - player
-                        if new_state['score'][opponent] > 0:
-                            steal = min(3, new_state['score'][opponent])
-                            new_state['score'][opponent] -= steal
-                            new_state['score'][player] += steal
-                    elif a == 'compass':
-                        opponent_cells = [c for c, owner in new_state['cells'].items() if owner == 1 - player]
-                        player_cells = [c for c, owner in new_state['cells'].items() if owner == player]
-                        if opponent_cells and player_cells:
-                            swap_from = random.choice(opponent_cells)
-                            swap_to = random.choice(player_cells)
-
-                            if swap_from in new_state['treasures']:
-                                t = new_state['treasures'][swap_from]
-                                pts = TREASURES[t]
-                                new_state['score'][1 - player] -= pts
-                                new_state['score'][player] += pts
-                            if swap_to in new_state['treasures']:
-                                t = new_state['treasures'][swap_to]
-                                pts = TREASURES[t]
-                                new_state['score'][player] -= pts
-                                new_state['score'][1 - player] += pts
-
-                            new_state['cells'][swap_from], new_state['cells'][swap_to] = player, 1 - player
-
+    # Switch turn if no extra_turn
     if not extra_turn:
         new_state['turn'] = 1 - player
+        print(f"DEBUG: Next turn: player {new_state['turn']}")
 
     return new_state, extra_turn
+
 
 def is_terminal(state):
     return all(owner != -1 for owner in state['edges'].values())
 
 def evaluate(state):
     return state['score'][1] - state['score'][0]
+
+# Add helper to activate compass
+def use_compass(state, player, target_cell):
+    print(f"DEBUG: Player {player} attempts compass on {target_cell}")
+    # need a compass and a recorded source cell
+    if not state.get('compass_available', {}).get(player, False) or not state.get('compass_cell', {}).get(player):
+        print("DEBUG: Compass not available or source missing")
+        return state
+    source = state['compass_cell'][player]
+    opponent = 1 - player
+    # only swap ownership and scores, keep treasures in place
+    if state['cells'].get(target_cell) != opponent:
+        print("DEBUG: Target cell not owned by opponent")
+        return state
+    print(f"DEBUG: Swapping ownership of cell {source} and {target_cell}")
+    # swap ownership
+    state['cells'][source], state['cells'][target_cell] = opponent, player
+    # remove compass artifact so icon disappears
+    if source in state.get('artifacts', {}):
+        del state['artifacts'][source]
+    if source in state.get('claimed_items', {}):
+        del state['claimed_items'][source]
+    # adjust scores: deduct source treasure value from player, add to opponent
+    if source in state.get('treasures', {}):
+        t = state['treasures'][source]; v = TREASURES[t]
+        state['score'][player] -= v; state['score'][opponent] += v
+        print(f"DEBUG: Player {player} loses {v} from source treasure")
+    # deduct target treasure from opponent, add to player
+    if target_cell in state.get('treasures', {}):
+        t = state['treasures'][target_cell]; v = TREASURES[t]
+        state['score'][opponent] -= v; state['score'][player] += v
+        print(f"DEBUG: Player {player} gains {v} from target treasure")
+    # clear compass availability
+    state['compass_available'][player] = False
+    state['compass_cell'][player] = None
+    print(f"DEBUG: Scores after compass: {state['score']}")
+    return state
+
+
+def use_gauntlet(state, player, amount=None):
+    opponent = 1 - player
+    if not state['gauntlet_available'][player]:
+        print("DEBUG: No gauntlet to use")
+        return state
+    last_val = state['last_treasure_value'][opponent]
+    if last_val <= 0:
+        print("DEBUG: Nothing to steal")
+        return state
+    steal = amount if amount is not None else last_val
+    steal = min(steal, last_val, state['score'][opponent])
+    print(f"DEBUG: Stealing {steal} from player {opponent}")
+    state['score'][opponent] -= steal
+    state['score'][player]   += steal
+    # consume and remove PNG
+    cell0 = state['gauntlet_cell'][player]
+    state['artifacts'].pop(cell0, None)
+    state['claimed_items'].pop(cell0, None)
+    state['gauntlet_available'][player] = False
+    state['gauntlet_timer'][player]     = 0
+    state['gauntlet_cell'][player]      = None
+    print("DEBUG: Gauntlet consumed")
+    return state
+

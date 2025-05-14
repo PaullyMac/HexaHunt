@@ -6,7 +6,7 @@ import time  # Add this import for time measurement
 import random
 import os
 from pygame import gfxdraw
-from game_logic import init_state, apply_move, get_possible_moves, is_terminal, use_gauntlet, use_compass
+from game_logic import init_state, apply_move, get_possible_moves, is_terminal, use_gauntlet
 from ai import minimax
 
 
@@ -21,7 +21,7 @@ HEX_SIZE = 60                    # Size of each hexagon
 MARGIN = 50                      # Margin from window edge to the board
 SPACING = 100                    # Distance between adjacent dots
 
-# Colors 
+# Colors
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED   = (255, 0, 0)   # Human color
@@ -991,21 +991,6 @@ def run_game_loop(screen, font, settings):
     clock = pygame.time.Clock()
     scale = get_scale_factor()
     state = init_state(settings['board_radius'], HEX_SIZE, scale)
-    selecting_compass = False  # Tracks whether user is choosing a cell for compass swap 
-    # ------- TESTING OVERRIDES -------
-    # Allow manual placement of gauntlet and treasure for testing
-    settings['test_hourglass_cell'] = (0, 1)       # place a gauntlet at cell coordinates (3,4)
-    settings['test_treasure_cell'] = (5, 6)       # place a treasure at cell (5,6)
-    settings['test_treasure_type'] = 'gold'       # optional: specify treasure type (default 'gold')
-    # Any cell choose must be valid keys in state['cell_edges']
-    if settings.get('test_hourglass_cell') is not None:
-        cell = settings['test_hourglass_cell']
-        state['artifacts'][cell] = 'gauntlet'
-        print(f"DEBUG: Test gauntlet placed at {cell}")
-    if settings.get('test_treasure_cell') is not None:
-        cell_t = settings['test_treasure_cell']
-        state['treasures'][cell_t] = settings.get('test_treasure_type', 'gold')
-        print(f"DEBUG: Test treasure placed at {cell_t}")
     message = ""
     message_timer = 0
     running = True
@@ -1174,23 +1159,6 @@ def run_game_loop(screen, font, settings):
                     print(f"DEBUG: Message set: {message}")
                     draw_board(screen, state, font, back_button, stats_button, logo_tagline)
                     continue
-            # Activate compass on 'C' key
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
-                if state.get('compass_available', {}).get(0, False):
-                    selecting_compass = True
-                    print("DEBUG: Compass activation mode. Click an opponent cell to swap.")
-                    continue
-
-            # If in compass selection mode, capture cell click
-            if selecting_compass and event.type == pygame.MOUSEBUTTONDOWN:
-                cell = get_clicked_cell(pos, state)  # implement this helper
-                if cell is not None:
-                    state = use_compass(state, 0, cell)
-                    message = "� compass used! Ownership swapped."
-                    message_timer = pygame.time.get_ticks()
-                selecting_compass = False
-                draw_board(screen, state, font, back_button, stats_button, logo_tagline)
-                continue
 
         # AI turn
         if state['turn'] == 1:
@@ -1252,14 +1220,6 @@ def run_game_loop(screen, font, settings):
                 # Apply the AI's move - now guaranteed to be valid
                 new_state, extra_turn = apply_move(state, move, 1)
                 state = new_state
-
-                # If AI just picked up a gauntlet, use it right away
-                if state.get('gauntlet_available', {}).get(1, False) \
-                and state.get('last_treasure_value', {}).get(0, 0) > 0:
-                    print("DEBUG: AI uses gauntlet against a valid target")
-                    state = use_gauntlet(state, 1)
-
-
                 if new_state['last_move']:
                     for cell in new_state['edge_cells'][new_state['last_move']]:
                         if cell in new_state['claimed_items']:
@@ -1505,25 +1465,7 @@ def draw_ai_thinking_animation(screen, current_frame, font):
     
     screen.blit(thinking_text, (text_x, text_y))
 
-def get_clicked_cell(pos, state):
-    x, y = pos
-    for cell, verts in state['cell_vertices'].items():
-        poly = [scale_point(v) for v in verts]
-        if point_in_polygon((x, y), poly):
-            return cell
-    return None
 
-# Ray-casting algorithm for point-in-polygon
-def point_in_polygon(point, polygon):
-    x, y = point
-    inside = False
-    n = len(polygon)
-    for i in range(n):
-        x1, y1 = polygon[i]
-        x2, y2 = polygon[(i + 1) % n]
-        if ((y1 > y) != (y2 > y)) and (x < (x2 - x1) * (y - y1) / (y2 - y1) + x1):
-            inside = not inside
-    return inside
 
 def load_item_icons():
     icons = {}
