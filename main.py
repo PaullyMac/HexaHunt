@@ -6,8 +6,12 @@ import time  # Add this import for time measurement
 import random
 import os
 from pygame import gfxdraw
+from game_logic import init_state, apply_move, get_possible_moves, is_terminal, use_gauntlet, use_compass
+from ai import minimax
+
 
 # ----- Constants & Board Configuration -----
+ITEM_ICONS = {}  # Global dictionary for item icons
 DEFAULT_WIDTH, DEFAULT_HEIGHT = 800, 800  # Increased default size
 CURRENT_WIDTH, CURRENT_HEIGHT = DEFAULT_WIDTH, DEFAULT_HEIGHT
 TOLERANCE = 10                   # Pixel tolerance for clicking on an edge
@@ -17,7 +21,7 @@ HEX_SIZE = 60                    # Size of each hexagon
 MARGIN = 50                      # Margin from window edge to the board
 SPACING = 100                    # Distance between adjacent dots
 
-# Colors
+# Colors 
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED   = (255, 0, 0)   # Human color
@@ -105,312 +109,7 @@ def axial_to_pixel(q, r, offset_x=0, offset_y=0):
     y = scale_hex_size() * 3/2 * r + offset_y * scale
     return (x, y)
 
-def polygon_vertices(center, size):
-    """
-    Compute the 6 vertices for a pointy-topped hexagon given its center.
-    """
-    cx, cy = center
-    vertices = []
-    for i in range(6):
-        angle_deg = 60 * i - 30  # so the top is a point
-        angle_rad = math.radians(angle_deg)
-        vx = cx + size * math.cos(angle_rad)
-        vy = cy + size * math.sin(angle_rad)
-        vertices.append((round(vx), round(vy)))
-    return vertices
 
-def normalize_edge(v1, v2):
-    """
-    Order the two endpoints of an edge so that every edge has a unique representation.
-    """
-    return tuple(sorted([v1, v2]))
-
-# ----- Game State Setup for Hexagonal Board -----
-def init_state(board_radius=None):
-    """
-    Build the hexagonal board state using axial coordinates.
-    This version computes a bounding box for the board (with no offset) and then
-    calculates an additional offset to center the board in the window.
-    """
-    global BOARD_RADIUS, HEX_SIZE
-    if board_radius is not None:
-        BOARD_RADIUS = board_radius
-        
-    # Dynamically adjust hex size based on board radius to ensure it fits properly
-    # Larger radius = smaller hexagons to fit everything
-    radius_scale_factor = 1.0
-    if BOARD_RADIUS == 3:
-        radius_scale_factor = 0.8
-    elif BOARD_RADIUS == 4:
-        radius_scale_factor = 0.65
-    
-    # Use a larger base size for smaller boards
-    if BOARD_RADIUS == 1:
-        radius_scale_factor = 1.5
-    
-    current_hex_size = HEX_SIZE * radius_scale_factor * get_scale_factor()
-    
-    # First pass: compute vertices for each valid hex cell with no offset.
-    temp_vertices = {}
-    valid_cells = []
-    for q in range(-BOARD_RADIUS, BOARD_RADIUS+1):
-        for r in range(-BOARD_RADIUS, BOARD_RADIUS+1):
-            s = -q - r
-            if max(abs(q), abs(r), abs(s)) <= BOARD_RADIUS:
-                valid_cells.append((q, r))
-                # Use actual spacing values based on hex size instead of fixed values
-                center_x = current_hex_size * math.sqrt(3) * (q + r/2)
-                center_y = current_hex_size * 3/2 * r
-                vertices = polygon_vertices((center_x, center_y), current_hex_size)
-                temp_vertices[(q, r)] = vertices
-
-    # Compute bounding box (min/max x and y) from all vertices.
-    all_x = []
-    all_y = []
-    for vertices in temp_vertices.values():
-        for (x, y) in vertices:
-            all_x.append(x)
-            all_y.append(y)
-    min_x, max_x = min(all_x), max(all_x)
-    min_y, max_y = min(all_y), max(all_y)
-    board_width = max_x - min_x
-    board_height = max_y - min_y
-
-    # Compute offsets to center the board in the window.
-    # Calculate the available area, accounting for the top UI elements (buttons)
-    top_ui_height = 70 * get_scale_factor()  # Approximate height for top UI elements
-    WIDTH = CURRENT_WIDTH - 2 * MARGIN * get_scale_factor()
-    HEIGHT = CURRENT_HEIGHT - 2 * MARGIN * get_scale_factor() - top_ui_height
-    
-    # Calculate offsets that will center the board in the available space
-    offset_x = (WIDTH - board_width) / 2 + MARGIN * get_scale_factor() - min_x
-    offset_y = (HEIGHT - board_height) / 2 + MARGIN * get_scale_factor() + top_ui_height - min_y
-
-    # Build final state using the computed offset.
-    state = {}
-    state['cells'] = {}
-    state['edges'] = {}
-    state['cell_edges'] = {}
-    state['edge_cells'] = {}
-    state['cell_vertices'] = {}
-
-    for cell in valid_cells:
-        q, r = cell
-        # Direct calculation rather than using axial_to_pixel to ensure consistency
-        center_x = current_hex_size * math.sqrt(3) * (q + r/2) + offset_x
-        center_y = current_hex_size * 3/2 * r + offset_y
-        center = (center_x, center_y)
-        vertices = polygon_vertices(center, current_hex_size)
-        state['cells'][(q, r)] = -1  # Unclaimed
-        state['cell_vertices'][(q, r)] = vertices
-        cell_edge_list = []
-        for i in range(6):
-            v1 = vertices[i]
-            v2 = vertices[(i + 1) % 6]
-            edge = normalize_edge(v1, v2)
-            cell_edge_list.append(edge)
-            # Register the edge if not present and link the cell to the edge.
-            if edge not in state['edges']:
-                state['edges'][edge] = -1
-                state['edge_cells'][edge] = []
-            if (q, r) not in state['edge_cells'][edge]:
-                state['edge_cells'][edge].append((q, r))
-        state['cell_edges'][(q, r)] = cell_edge_list
-
-    state['turn'] = 0  # Human starts
-    state['score'] = [0, 0]
-    state['last_move'] = None  # Initialize last_move to None
-    return state
-
-# ----- Move Utilities -----
-def get_possible_moves(state):
-    """Return a list of all undrawn edges."""
-    moves = []
-    for edge, owner in state['edges'].items():
-        if owner == -1:
-            moves.append(edge)
-    return moves
-
-def apply_move(state, move, player):
-    """
-    Apply the move (drawing an edge) by the given player.
-    For each cell adjacent to the move, check if all 6 edges have been drawn.
-    If so, mark the cell with the player's number and update score.
-    Returns the new state and a flag for extra turn.
-    """
-    new_state = copy.deepcopy(state)
-    extra_turn = False
-    
-    # First check if the move is valid (edge not already filled)
-    if new_state['edges'][move] != -1:
-        print(f"Warning: Attempting to play on already filled edge {move}")
-        return new_state, False
-        
-    new_state['edges'][move] = player
-    
-    # Store the last move in the state
-    new_state['last_move'] = move
-    
-    # Check each cell that uses this edge.
-    for cell in new_state['edge_cells'][move]:
-        if new_state['cells'][cell] == -1:  # still unclaimed
-            completed = True
-            for edge in new_state['cell_edges'][cell]:
-                if new_state['edges'][edge] == -1:
-                    completed = False
-                    break
-            if completed:
-                new_state['cells'][cell] = player
-                new_state['score'][player] += 1
-                extra_turn = True
-                print(f"Player {player} scored! New score: {new_state['score']}")  # Debug line
-                
-    if not extra_turn:
-        new_state['turn'] = 1 - player
-    return new_state, extra_turn
-
-def is_terminal(state):
-    """The game is over if there are no moves left."""
-    return len(get_possible_moves(state)) == 0
-
-def evaluate(state):
-    """
-    Evaluation function for minimax.
-    Returns (AI score - Human score).
-    """
-    return state['score'][1] - state['score'][0]
-
-# Add this function to create a unique hash for a game state
-def hash_state(state):
-    """Create a hash representation of the board state for the transposition table"""
-    # Use a tuple of sorted (edge, owner) pairs as the hash
-    edge_tuples = tuple(sorted((edge, owner) for edge, owner in state['edges'].items()))
-    return hash(edge_tuples)
-
-# Modified minimax with stronger validity checks
-def minimax(state, depth, alpha, beta, maximizingPlayer, transposition_table=None):
-    """Minimax algorithm with alpha-beta pruning and transposition table"""
-    if transposition_table is None:
-        transposition_table = {}
-    
-    # Generate a hash for the current state
-    state_hash = hash_state(state)
-    
-    # Check if this state is already in our table at sufficient depth
-    if state_hash in transposition_table and transposition_table[state_hash]['depth'] >= depth:
-        AI_STATS['cache_hits'] += 1
-        cached_move = transposition_table[state_hash]['move']
-        
-        # Verify the cached move is still valid (not already played)
-        if cached_move is None or (cached_move in state['edges'] and state['edges'][cached_move] == -1):
-            return transposition_table[state_hash]['value'], cached_move
-        # If cached move is invalid, don't use the cache at all - recalculate
-    
-    AI_STATS['positions_evaluated'] += 1
-    
-    if depth == 0 or is_terminal(state):
-        value = evaluate(state)
-        transposition_table[state_hash] = {'value': value, 'move': None, 'depth': depth}
-        AI_STATS['total_cache_size'] = len(transposition_table)
-        return value, None
-
-    # Get STRICTLY valid moves - double-checked to be unplayed
-    possible_moves = []
-    for move, owner in state['edges'].items():
-        if owner == -1:  # Definitely unplayed
-            possible_moves.append(move)
-    
-    # Safety check - if no valid moves, return current evaluation
-    if not possible_moves:
-        value = evaluate(state)
-        transposition_table[state_hash] = {'value': value, 'move': None, 'depth': depth}
-        AI_STATS['total_cache_size'] = len(transposition_table)
-        return value, None
-    
-    ordered_moves = order_moves(state, possible_moves, maximizingPlayer)
-    
-    best_move = None
-    if maximizingPlayer:
-        maxEval = -math.inf
-        for move in ordered_moves:
-            # Double-check the move is valid - make sure edge exists and is unplayed
-            if move not in state['edges'] or state['edges'][move] != -1:
-                continue
-                
-            new_state, extra_turn = apply_move(state, move, 1)
-            if extra_turn:
-                eval_score, _ = minimax(new_state, depth - 1, alpha, beta, True, transposition_table)
-            else:
-                eval_score, _ = minimax(new_state, depth - 1, alpha, beta, False, transposition_table)
-            if eval_score > maxEval:
-                maxEval = eval_score
-                best_move = move
-            alpha = max(alpha, eval_score)
-            if beta <= alpha:
-                break
-        
-        # Safety check - if no best move was found, pick a valid move from possible_moves
-        if best_move is None and possible_moves:
-            best_move = possible_moves[0]
-            
-        transposition_table[state_hash] = {'value': maxEval, 'move': best_move, 'depth': depth}
-        AI_STATS['total_cache_size'] = len(transposition_table)
-        return maxEval, best_move
-    else:
-        minEval = math.inf
-        for move in ordered_moves:
-            # Double-check the move is valid - make sure edge exists and is unplayed
-            if move not in state['edges'] or state['edges'][move] != -1:
-                continue
-                
-            new_state, extra_turn = apply_move(state, move, 0)
-            if extra_turn:
-                eval_score, _ = minimax(new_state, depth - 1, alpha, beta, False, transposition_table)
-            else:
-                eval_score, _ = minimax(new_state, depth - 1, alpha, beta, True, transposition_table)
-            if eval_score < minEval:
-                minEval = eval_score
-                best_move = move
-            beta = min(beta, eval_score)
-            if beta <= alpha:
-                break
-        
-        # Safety check - if no best move was found, pick a valid move from possible_moves
-        if best_move is None and possible_moves:
-            best_move = possible_moves[0]
-            
-        transposition_table[state_hash] = {'value': minEval, 'move': best_move, 'depth': depth}
-        AI_STATS['total_cache_size'] = len(transposition_table)
-        return minEval, best_move
-
-# Helper function to order moves - prioritize moves that complete boxes
-def order_moves(state, moves, maximizing_player):
-    """Order moves to improve alpha-beta pruning efficiency"""
-    move_scores = []
-    player = 1 if maximizing_player else 0
-    
-    for move in moves:
-        score = 0
-        # Check how many edges are already drawn for each affected cell
-        for cell in state['edge_cells'][move]:
-            if state['cells'][cell] == -1:  # unclaimed cell
-                edges_drawn = 0
-                for edge in state['cell_edges'][cell]:
-                    if edge == move or state['edges'][edge] != -1:
-                        edges_drawn += 1
-                # Prioritize moves that complete or nearly complete cells
-                if edges_drawn == 6:  # Would complete a cell
-                    score += 100
-                elif edges_drawn == 5:  # One away from completion
-                    score += 50
-        
-        move_scores.append((move, score))
-    
-    # Sort moves by score (descending for maximizing, ascending for minimizing)
-    if maximizing_player:
-        return [move for move, score in sorted(move_scores, key=lambda x: -x[1])]
-    else:
-        return [move for move, score in sorted(move_scores, key=lambda x: x[1])]
 
 # ----- Updated Drawing Function -----
 def draw_board(screen, state, font, back_button=None, stats_button=None, logo_tagline=None):
@@ -429,10 +128,20 @@ def draw_board(screen, state, font, back_button=None, stats_button=None, logo_ta
     # Fill claimed cells
     for cell, owner in state['cells'].items():
         if owner != -1:
-            # Scale the vertices
             vertices = [scale_point(v) for v in state['cell_vertices'][cell]]
-            color = BLUE if owner == 0 else RED  # Fixed: BLUE for human (0), RED for AI (1)
+            color = BLUE if owner == 0 else RED
             pygame.draw.polygon(screen, color, vertices)
+
+            # 🎯 Draw item icon if any
+            if cell in state['claimed_items']:
+                item = state['claimed_items'][cell]
+                if item in ITEM_ICONS:
+                    icon = ITEM_ICONS[item]
+                    # Center the icon on the hexagon
+                    cx = sum(v[0] for v in vertices) / 6
+                    cy = sum(v[1] for v in vertices) / 6
+                    rect = icon.get_rect(center=(cx, cy))
+                    screen.blit(icon, rect)
     
     # Draw edges with visualization highlights
     for edge, owner in state['edges'].items():
@@ -1272,13 +981,33 @@ def handle_settings_events(event, settings):
 # ----- Original Game Loop (renamed) -----
 def run_game_loop(screen, font, settings):
     """Main game loop (former main function)"""
+    message = ""
+    message_timer = 0
     global CURRENT_WIDTH, CURRENT_HEIGHT, DEPTH
     
     # Apply settings
     DEPTH = settings['ai_depth']
     
     clock = pygame.time.Clock()
-    state = init_state(settings['board_radius'])
+    scale = get_scale_factor()
+    state = init_state(settings['board_radius'], HEX_SIZE, scale)
+    selecting_compass = False  # Tracks whether user is choosing a cell for compass swap 
+    # ------- TESTING OVERRIDES -------
+    # Allow manual placement of gauntlet and treasure for testing
+    settings['test_hourglass_cell'] = (0, 1)       # place a gauntlet at cell coordinates (3,4)
+    settings['test_treasure_cell'] = (5, 6)       # place a treasure at cell (5,6)
+    settings['test_treasure_type'] = 'gold'       # optional: specify treasure type (default 'gold')
+    # Any cell choose must be valid keys in state['cell_edges']
+    if settings.get('test_hourglass_cell') is not None:
+        cell = settings['test_hourglass_cell']
+        state['artifacts'][cell] = 'gauntlet'
+        print(f"DEBUG: Test gauntlet placed at {cell}")
+    if settings.get('test_treasure_cell') is not None:
+        cell_t = settings['test_treasure_cell']
+        state['treasures'][cell_t] = settings.get('test_treasure_type', 'gold')
+        print(f"DEBUG: Test treasure placed at {cell_t}")
+    message = ""
+    message_timer = 0
     running = True
 
     # Load logo tagline image
@@ -1361,8 +1090,9 @@ def run_game_loop(screen, font, settings):
                 old_cell_edges = state['cell_edges'].copy()
                 
                 # Rebuild the game state to recenter the board
-                state = init_state(settings['board_radius'])
-                
+                scale = get_scale_factor()
+                state = init_state(settings['board_radius'], HEX_SIZE, scale)
+
                 # Restore cell claims first - this works because cell coordinates don't change
                 for cell, owner in old_cells.items():
                     if owner != -1 and cell in state['cells']:
@@ -1416,9 +1146,51 @@ def run_game_loop(screen, font, settings):
                     if move is not None:
                         new_state, extra_turn = apply_move(state, move, 0)
                         state = new_state
+
+                        # Newly inserted - RJ
+                        if new_state['last_move']:
+                            for cell in new_state['edge_cells'][new_state['last_move']]:
+                                if cell in new_state['claimed_items']:
+                                    item = new_state['claimed_items'][cell]
+                                    if item == "compass":
+                                        message = "🔄 Compass of Portals activated!"
+                                        message_timer = pygame.time.get_ticks()
+                                    elif item == "gauntlet":
+                                        message = "🧤 Shadow Gauntlet: You stole points!"
+                                        message_timer = pygame.time.get_ticks()
+                                    elif item == "hourglass":
+                                        message = "⏳ Hourglass: Extra turn granted!"
+                                        message_timer = pygame.time.get_ticks()
                         draw_board(screen, state, font, back_button, stats_button, logo_tagline)
                         # Reset visualization edges after human move
                         AI_STATS['visualization_edges'] = {}
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_g:
+                print("DEBUG: 'G' key pressed - attempting gauntlet use")
+                if state['gauntlet_available'][0]:
+                    state = use_gauntlet(state, 0)
+                    message = "🧤 Shadow Gauntlet used!"
+                    message_timer = pygame.time.get_ticks()
+                    print(f"DEBUG: Message set: {message}")
+                    draw_board(screen, state, font, back_button, stats_button, logo_tagline)
+                    continue
+            # Activate compass on 'C' key
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
+                if state.get('compass_available', {}).get(0, False):
+                    selecting_compass = True
+                    print("DEBUG: Compass activation mode. Click an opponent cell to swap.")
+                    continue
+
+            # If in compass selection mode, capture cell click
+            if selecting_compass and event.type == pygame.MOUSEBUTTONDOWN:
+                cell = get_clicked_cell(pos, state)  # implement this helper
+                if cell is not None:
+                    state = use_compass(state, 0, cell)
+                    message = "� compass used! Ownership swapped."
+                    message_timer = pygame.time.get_ticks()
+                selecting_compass = False
+                draw_board(screen, state, font, back_button, stats_button, logo_tagline)
+                continue
 
         # AI turn
         if state['turn'] == 1:
@@ -1480,6 +1252,28 @@ def run_game_loop(screen, font, settings):
                 # Apply the AI's move - now guaranteed to be valid
                 new_state, extra_turn = apply_move(state, move, 1)
                 state = new_state
+
+                # If AI just picked up a gauntlet, use it right away
+                if state.get('gauntlet_available', {}).get(1, False) \
+                and state.get('last_treasure_value', {}).get(0, 0) > 0:
+                    print("DEBUG: AI uses gauntlet against a valid target")
+                    state = use_gauntlet(state, 1)
+
+
+                if new_state['last_move']:
+                    for cell in new_state['edge_cells'][new_state['last_move']]:
+                        if cell in new_state['claimed_items']:
+                            item = new_state['claimed_items'][cell]
+                            if item == "compass":
+                                message = "🔄 Compass of Portals activated!"
+                                message_timer = pygame.time.get_ticks()
+                            elif item == "gauntlet":
+                                message = "🧤 Shadow Gauntlet: You stole points!"
+                                message_timer = pygame.time.get_ticks()
+                            elif item == "hourglass":
+                                message = "⏳ Hourglass: Extra turn granted!"
+                                message_timer = pygame.time.get_ticks()
+
                 
             pygame.display.set_caption("HexaHunt - Hexagonal Dots and Boxes")
             ai_is_thinking = False  # AI is done thinking
@@ -1510,7 +1304,10 @@ def run_game_loop(screen, font, settings):
             pygame.display.flip()
             pygame.time.delay(3000)
             return
-            
+        
+        if message and pygame.time.get_ticks() - message_timer < 2000:
+            popup_surface = font.render(message, True, (255, 255, 0))
+            screen.blit(popup_surface, (CURRENT_WIDTH // 2 - popup_surface.get_width() // 2, 10))
         clock.tick(30)
         
 # ----- Hexagon Background Animation -----
@@ -1708,10 +1505,40 @@ def draw_ai_thinking_animation(screen, current_frame, font):
     
     screen.blit(thinking_text, (text_x, text_y))
 
+def get_clicked_cell(pos, state):
+    x, y = pos
+    for cell, verts in state['cell_vertices'].items():
+        poly = [scale_point(v) for v in verts]
+        if point_in_polygon((x, y), poly):
+            return cell
+    return None
+
+# Ray-casting algorithm for point-in-polygon
+def point_in_polygon(point, polygon):
+    x, y = point
+    inside = False
+    n = len(polygon)
+    for i in range(n):
+        x1, y1 = polygon[i]
+        x2, y2 = polygon[(i + 1) % n]
+        if ((y1 > y) != (y2 > y)) and (x < (x2 - x1) * (y - y1) / (y2 - y1) + x1):
+            inside = not inside
+    return inside
+
+def load_item_icons():
+    icons = {}
+    names = ['copper', 'silver', 'gold', 'platinum', 'diamond', 'hourglass', 'gauntlet', 'compass']
+    for name in names:
+        try:
+            img = pygame.image.load(f'assets/{name}.png').convert_alpha()
+            icons[name] = pygame.transform.scale(img, (32, 32))
+        except Exception as e:
+            print(f"Error loading {name}.png: {e}")
+    return icons
+
 # ----- New Main Function with State Machine -----
 def main():
-    global CURRENT_WIDTH, CURRENT_HEIGHT, base_font, button_font
-    
+    global CURRENT_WIDTH, CURRENT_HEIGHT, base_font, button_font, ITEM_ICONS
     pygame.init()
     
     # Set custom window icon
@@ -1722,6 +1549,7 @@ def main():
         print("Could not load icon image 'logo.png'")
     
     screen = pygame.display.set_mode((DEFAULT_WIDTH, DEFAULT_HEIGHT), pygame.RESIZABLE)
+    ITEM_ICONS = load_item_icons()
     pygame.display.set_caption("HexaHunt")
     
     # Initialize fonts
