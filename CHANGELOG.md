@@ -1,5 +1,21 @@
 # Changelog
 
+## June 9, 2025
+
+### Fixed
+- Fixed board centering issue where hex grid was positioned in the top-left corner instead of screen center
+- Implemented dynamic board positioning that centers the hex grid regardless of board radius (1-4) and AI depth (2-4)
+- Added proper margin calculations for UI elements (logo at top, scores at bottom, buttons on sides)
+- Fixed board positioning persistence during window resizing - hex grid now stays centered when zooming in/out
+- Enhanced window resize handling to preserve game state while repositioning board to center
+- Improved edge mapping algorithm during resize to maintain all player moves and game progress
+
+### Improved
+- Board now dynamically centers itself based on actual board dimensions rather than fixed offsets
+- Enhanced responsive design - hex grid automatically adjusts position for different window sizes
+- Improved visual layout by ensuring proper spacing between board and UI elements
+- Better user experience with consistent board centering across all game configurations
+
 ## May 13, 2025
 
 ### Improved
