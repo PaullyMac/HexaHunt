@@ -1,5 +1,56 @@
 # Changelog
 
+## June 16, 2025
+
+### Added
+- **Artifact Hint System**: Implemented visual hints for artifact usage
+  - Added `draw_artifact_hint()` function to display usage instructions at bottom center of screen
+  - Hints appear when artifacts are claimed and persist for 5 seconds
+  - Added timer system (`artifact_hint_timer`) to manage hint display duration
+  - Integrated hint display into the main drawing pipeline
+
+### Fixed
+- **Artifact Hint Display Issues**: Resolved multiple problems preventing artifact hints from appearing
+  - Fixed variable scope issues where `artifact_hint` variables weren't properly passed between functions
+  - Updated `draw_board()` function signature to accept artifact hint parameters
+  - Corrected all `draw_board()` function calls throughout the codebase to pass hint parameters
+  - Fixed wrong hint assignments (compass hint was being assigned to gauntlet)
+  - Removed duplicate/overwriting hint assignments that were clearing hints immediately
+  - Fixed drawing order issue where hints were drawn after `pygame.display.flip()` was called
+
+- **Game Over Text Positioning**: Fixed game over message positioning
+  - Implemented proper centering using `get_rect(center=...)` method
+  - Added semi-transparent overlay for better text visibility over game board
+  - Added text shadow and dynamic coloring based on winner (Blue for human, Red for AI, Black for tie)
+  - Positioned text below center of window for better visual placement
+
+- **Compass Message Character Encoding**: Fixed character encoding issue in compass usage message
+
+### Improved
+- **Artifact Hint Visibility**: Enhanced visual presentation of artifact hints
+  - Added semi-transparent white background with purple border for better readability
+  - Used distinctive purple text color to differentiate from other UI elements
+  - Positioned hints at bottom center with proper padding and styling
+  - Made hints non-intrusive while still clearly visible
+
+- **Game Over Screen**: Enhanced end-game presentation
+  - Added larger, more prominent game over text
+  - Improved text contrast with shadow effects and background overlay
+  - Better visual hierarchy for end-game information
+
+- **Code Organization**: Improved function parameter consistency
+  - Standardized `draw_board()` function calls across all game states
+  - Better separation of concerns between drawing and game logic
+  - Enhanced maintainability of the drawing pipeline
+
+### Technical Details
+- **Artifact Hints Now Display**:
+  - "Press the 'G' key to activate the gauntlet" - when Shadow Gauntlet is claimed
+  - "Press the 'C' key. Click on any opponent-owned hexagon" - when Compass of Portals is claimed  
+  - "You get a bonus turn credit" - when Hourglass of Quickening is claimed
+- **Function Signatures Updated**: All `draw_board()` calls now properly pass `artifact_hint` and `artifact_hint_timer` parameters
+- **Drawing Pipeline**: Hints are now rendered before the final `pygame.display.flip()` call
+
 ## June 9, 2025
 
 ### Fixed

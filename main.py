@@ -2,7 +2,7 @@ import pygame
 import sys
 import math
 import copy
-import time  # Add this import for time measurement
+import time
 import random
 import os
 from pygame import gfxdraw
@@ -37,15 +37,8 @@ BUTTON_COLOR = (180, 180, 250)
 BUTTON_HOVER = (160, 160, 230)
 BUTTON_TEXT = BLACK
 
-# Add stats tracking for visualization
-AI_STATS = {
-    'cache_hits': 0,
-    'positions_evaluated': 0,
-    'thinking_time': 0.0,
-    'visualization_edges': {},  # To track which edges to highlight
-    'total_cache_size': 0,
-    'show_stats': False  # Flag to control stats visibility
-}
+# Remove or comment out the AI_STATS dictionary - replace with simpler tracking
+AI_THINKING_TIME = 0.0
 
 # ----- Updated Colors for Enhanced UI -----
 # Replace your existing color definitions or add these new ones
@@ -112,9 +105,9 @@ def axial_to_pixel(q, r, offset_x=0, offset_y=0):
 
 
 # ----- Updated Drawing Function -----
-def draw_board(screen, state, font, back_button=None, stats_button=None, logo_tagline=None):
+def draw_board(screen, state, font, back_button=None, logo_tagline=None, artifact_hint="", artifact_hint_timer=0):
     """
-    Render the board with visualization of the AI's thinking process.
+    Render the board with simplified display - only show AI thinking time.
     """
     screen.fill(WHITE)
     scale = get_scale_factor()
@@ -132,7 +125,7 @@ def draw_board(screen, state, font, back_button=None, stats_button=None, logo_ta
             color = BLUE if owner == 0 else RED
             pygame.draw.polygon(screen, color, vertices)
 
-            # 🎯 Draw item icon if any
+            # Draw item icon if any
             if cell in state['claimed_items']:
                 item = state['claimed_items'][cell]
                 if item in ITEM_ICONS:
@@ -143,7 +136,7 @@ def draw_board(screen, state, font, back_button=None, stats_button=None, logo_ta
                     rect = icon.get_rect(center=(cx, cy))
                     screen.blit(icon, rect)
     
-    # Draw edges with visualization highlights
+    # Draw edges - simplified without visualization highlights
     for edge, owner in state['edges'].items():
         # Scale the edge endpoints
         a, b = edge
@@ -159,20 +152,11 @@ def draw_board(screen, state, font, back_button=None, stats_button=None, logo_ta
                 color = YELLOW
                 width = int(6 * scale)  # Make it slightly wider for emphasis
             else:
-                color = BLUE if owner == 0 else RED  # Fixed: BLUE for human (0), RED for AI (1)
+                color = BLUE if owner == 0 else RED
                 width = int(4 * scale)
         else:
-            # Check if this edge is in our visualization dictionary and stats are visible
-            if AI_STATS['show_stats'] and edge in AI_STATS['visualization_edges']:
-                if AI_STATS['visualization_edges'][edge] == 'cache_hit':
-                    color = LIGHT_GREEN  # Cache hit
-                    width = int(2 * scale)
-                else:
-                    color = LIGHT_YELLOW  # Newly evaluated
-                    width = int(2 * scale)
-            else:
-                color = GRAY
-                width = max(1, int(1 * scale))
+            color = GRAY
+            width = max(1, int(1 * scale))
         
         pygame.draw.line(screen, color, scaled_a, scaled_b, width)
     
@@ -186,8 +170,8 @@ def draw_board(screen, state, font, back_button=None, stats_button=None, logo_ta
                 drawn_vertices.add(scaled_vertex)
     
     # Draw score text at the bottom - Human on left, AI on right
-    human_score_text = font.render(f"Human: {state['score'][0]}", True, BLUE)  # Correct: BLUE for human
-    ai_score_text = font.render(f"AI: {state['score'][1]}", True, RED)  # Correct: RED for AI
+    human_score_text = font.render(f"Human: {state['score'][0]}", True, BLUE)
+    ai_score_text = font.render(f"AI: {state['score'][1]}", True, RED)
 
     # Place Human score at the left
     screen.blit(human_score_text, (scaled_margin, CURRENT_HEIGHT - scaled_margin))
@@ -196,49 +180,23 @@ def draw_board(screen, state, font, back_button=None, stats_button=None, logo_ta
     ai_score_x = CURRENT_WIDTH - scaled_margin - ai_score_text.get_width()
     screen.blit(ai_score_text, (ai_score_x, CURRENT_HEIGHT - scaled_margin))
     
-    # Only draw AI stats if the show_stats flag is True
-    if AI_STATS['show_stats']:
-        # Draw AI stats - position based on current window size
-        stats_x = CURRENT_WIDTH - 200 * scale
-        stats_y = scaled_margin + 50 * scale  # Added 50 scaled pixels to move stats down below the button
-        line_height = 30 * scale
-        
-        stats_text = font.render(f"Time: {AI_STATS['thinking_time']:.3f}s", True, RED)  # Fixed: RED for AI stats
-        screen.blit(stats_text, (stats_x, stats_y))
-        
-        cache_text = font.render(f"Cache: {AI_STATS['total_cache_size']} positions", True, RED)  # Fixed: RED for AI stats
-        screen.blit(cache_text, (stats_x, stats_y + line_height))
-        
-        hits_text = font.render(f"Hits: {AI_STATS['cache_hits']}", True, LIGHT_GREEN)
-        screen.blit(hits_text, (stats_x, stats_y + line_height * 2))
-        
-        evals_text = font.render(f"Evals: {AI_STATS['positions_evaluated']}", True, LIGHT_YELLOW)
-        screen.blit(evals_text, (stats_x, stats_y + line_height * 3))
-        
-        # If we have both hits and evaluations, show efficiency
-        if AI_STATS['positions_evaluated'] + AI_STATS['cache_hits'] > 0:
-            efficiency = AI_STATS['cache_hits'] / (AI_STATS['positions_evaluated'] + AI_STATS['cache_hits']) * 100
-            eff_text = font.render(f"Efficiency: {efficiency:.1f}%", True, RED)  # Fixed: RED for AI stats
-            screen.blit(eff_text, (stats_x, stats_y + line_height * 4))
-        
-        # Add legend
-        pygame.draw.rect(screen, LIGHT_GREEN, (stats_x - 20 * scale, stats_y + line_height * 5, 15 * scale, 15 * scale))
-        legend1 = font.render("Cache hit", True, BLACK)
-        screen.blit(legend1, (stats_x, stats_y + line_height * 5))
-        
-        pygame.draw.rect(screen, LIGHT_YELLOW, (stats_x - 20 * scale, stats_y + line_height * 6, 15 * scale, 15 * scale))
-        legend2 = font.render("New evaluation", True, BLACK)
-        screen.blit(legend2, (stats_x, stats_y + line_height * 6))
+    # Only show AI thinking time (top right corner)
+    if AI_THINKING_TIME > 0:
+        time_text = font.render(f"AI Time: {AI_THINKING_TIME:.3f}s", True, RED)
+        time_x = CURRENT_WIDTH - scaled_margin - time_text.get_width()
+        time_y = scaled_margin + 50 * scale
+        screen.blit(time_text, (time_x, time_y))
     
     # Draw back button if provided
     if back_button:
         draw_button(screen, back_button, is_button_hovered(back_button, pygame.mouse.get_pos()))
     
-    # Draw stats button if provided
-    if stats_button:
-        draw_button(screen, stats_button, is_button_hovered(stats_button, pygame.mouse.get_pos()))
+    # Draw artifact hint if active and not expired
+    if artifact_hint and pygame.time.get_ticks() - artifact_hint_timer < 5000:
+        draw_artifact_hint(screen, artifact_hint, font)
     
     pygame.display.flip()
+
 
 def point_line_distance(p, a, b):
     """
@@ -983,7 +941,13 @@ def run_game_loop(screen, font, settings):
     """Main game loop (former main function)"""
     message = ""
     message_timer = 0
-    global CURRENT_WIDTH, CURRENT_HEIGHT, DEPTH
+    artifact_hint = ""
+    artifact_hint_timer = 0
+
+    global CURRENT_WIDTH, CURRENT_HEIGHT, DEPTH, AI_THINKING_TIME
+    
+    # Reset AI thinking time at the start of each new game
+    AI_THINKING_TIME = 0.0
     
     # Apply settings
     DEPTH = settings['ai_depth']
@@ -991,7 +955,8 @@ def run_game_loop(screen, font, settings):
     clock = pygame.time.Clock()
     scale = get_scale_factor()
     state = init_state(settings['board_radius'], HEX_SIZE, scale)
-    selecting_compass = False  # Tracks whether user is choosing a cell for compass swap 
+    selecting_compass = False
+    
     # ------- TESTING OVERRIDES -------
     # Allow manual placement of Hourglass and treasure for testing
     settings['test_hourglass_cell'] = (0, 1)       # place a hourglass at cell coordinates (3,4)
@@ -1000,7 +965,7 @@ def run_game_loop(screen, font, settings):
     # Any cell choose must be valid keys in state['cell_edges']
     if settings.get('test_hourglass_cell') is not None:
         cell = settings['test_hourglass_cell']
-        state['artifacts'][cell] = 'hourglass'
+        state['artifacts'][cell] = 'gauntlet'
         print(f"DEBUG: Test Hourglass placed at {cell}")
     if settings.get('test_treasure_cell') is not None:
         cell_t = settings['test_treasure_cell']
@@ -1013,7 +978,7 @@ def run_game_loop(screen, font, settings):
     # Load logo tagline image
     try:
         logo_tagline = pygame.image.load(os.path.join('assets', 'logo_tagline.png'))
-        # Scale logo appropriately (adjust the multiplier as needed)
+        # Scale logo appropriately
         logo_height = int(60 * get_scale_factor())
         logo_width = int(logo_tagline.get_width() * (logo_height / logo_tagline.get_height()))
         logo_tagline = pygame.transform.scale(logo_tagline, (logo_width, logo_height))
@@ -1024,18 +989,10 @@ def run_game_loop(screen, font, settings):
     # Create a transposition table that persists between moves
     transposition_table = {}
     
-    # Create back button for game screen
+    # Create back button for game screen - remove stats button
     button_font = pygame.font.SysFont(None, int(32 * get_scale_factor()))
     back_button = create_button("Back", 20 * get_scale_factor(), 20 * get_scale_factor(), 
                               100 * get_scale_factor(), 40 * get_scale_factor(), button_font)
-    
-    # Create a new stats toggle button
-    stats_button_text = "Show Stats"
-    stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 20 * get_scale_factor(),
-                               120 * get_scale_factor(), 40 * get_scale_factor(), button_font)
-    
-    # Set initial AI stats visibility to False
-    AI_STATS['show_stats'] = False
     
     # Load animation images and initialize animation state
     animation_images = load_animation_images()
@@ -1051,7 +1008,7 @@ def run_game_loop(screen, font, settings):
             animation_frame = (animation_frame + 1) % len(animation_images)
             last_animation_update = current_time
         
-        # Handle events (e.g. closing window, clicks, resize)
+        # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -1065,14 +1022,10 @@ def run_game_loop(screen, font, settings):
                 font_size = int(28 * get_scale_factor())
                 font = pygame.font.SysFont(None, max(12, font_size))
                 
-                # Update button positions and sizes
+                # Update button positions and sizes - remove stats button updates
                 button_font = pygame.font.SysFont(None, int(32 * get_scale_factor()))
                 back_button = create_button("Back", 20 * get_scale_factor(), 20 * get_scale_factor(), 
                                           100 * get_scale_factor(), 40 * get_scale_factor(), button_font)
-                stats_button_text = "Show Stats" if not AI_STATS['show_stats'] else "Hide Stats"
-                stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 
-                                           20 * get_scale_factor(), 120 * get_scale_factor(), 
-                                           40 * get_scale_factor(), button_font)
                 
                 # Update logo tagline size
                 if logo_tagline:
@@ -1145,24 +1098,14 @@ def run_game_loop(screen, font, settings):
                 if back_button['rect'].collidepoint(pos):
                     return  # Exit game loop and return to main menu
                 
-                # Check if stats button was clicked
-                if stats_button['rect'].collidepoint(pos):
-                    # Toggle stats visibility
-                    AI_STATS['show_stats'] = not AI_STATS['show_stats']
-                    # Update button text
-                    stats_button_text = "Show Stats" if not AI_STATS['show_stats'] else "Hide Stats"
-                    stats_button = create_button(stats_button_text, CURRENT_WIDTH - 120 * get_scale_factor(), 
-                                               20 * get_scale_factor(), 120 * get_scale_factor(), 
-                                               40 * get_scale_factor(), button_font)
-                
-                # Only allow moves if it is the human player's turn.
+                # Only allow moves if it is the human player's turn
                 if state['turn'] == 0:
                     move = get_clicked_edge(pos, state)
                     if move is not None:
                         new_state, extra_turn = apply_move(state, move, 0)
                         state = new_state
 
-                        # Newly inserted - RJ
+                        # Handle item messages and artifact hints for human player
                         if new_state['last_move']:
                             for cell in new_state['edge_cells'][new_state['last_move']]:
                                 if cell in new_state['claimed_items']:
@@ -1170,15 +1113,22 @@ def run_game_loop(screen, font, settings):
                                     if item == "compass":
                                         message = "🔄 Compass of Portals activated!"
                                         message_timer = pygame.time.get_ticks()
+                                        # Add artifact hint for human player
+                                        artifact_hint = "Press the 'C' key. Click on any opponent-owned hexagon"
+                                        artifact_hint_timer = pygame.time.get_ticks()
                                     elif item == "gauntlet":
                                         message = "🧤 Shadow Gauntlet: You stole points!"
                                         message_timer = pygame.time.get_ticks()
+                                        # Add artifact hint for human player
+                                        artifact_hint = "Press the 'G' key to activate the gauntlet"
+                                        artifact_hint_timer = pygame.time.get_ticks()
                                     elif item == "hourglass":
-                                        message = "⏳ Hourglass: Extra turn granted!"
+                                        message = "⏳ Hourglass: extra turn granted!"
                                         message_timer = pygame.time.get_ticks()
-                        draw_board(screen, state, font, back_button, stats_button, logo_tagline)
-                        # Reset visualization edges after human move
-                        AI_STATS['visualization_edges'] = {}
+                                        # Add artifact hint for human player
+                                        artifact_hint = "You get a bonus turn credit"
+                                        artifact_hint_timer = pygame.time.get_ticks()
+                        draw_board(screen, state, font, back_button, logo_tagline, artifact_hint, artifact_hint_timer)
 
             if event.type == pygame.KEYDOWN and event.key == pygame.K_g:
                 print("DEBUG: 'G' key pressed - attempting gauntlet use")
@@ -1187,7 +1137,7 @@ def run_game_loop(screen, font, settings):
                     message = "🧤 Shadow Gauntlet used!"
                     message_timer = pygame.time.get_ticks()
                     print(f"DEBUG: Message set: {message}")
-                    draw_board(screen, state, font, back_button, stats_button, logo_tagline)
+                    draw_board(screen, state, font, back_button, logo_tagline, artifact_hint, artifact_hint_timer)
                     continue
             # Activate compass on 'C' key
             if event.type == pygame.KEYDOWN and event.key == pygame.K_c:
@@ -1201,24 +1151,20 @@ def run_game_loop(screen, font, settings):
                 cell = get_clicked_cell(pos, state)  # implement this helper
                 if cell is not None:
                     state = use_compass(state, 0, cell)
-                    message = "� compass used! Ownership swapped."
+                    message = "🔄 Compass used! Ownership swapped."  # Fixed the character
                     message_timer = pygame.time.get_ticks()
                 selecting_compass = False
-                draw_board(screen, state, font, back_button, stats_button, logo_tagline)
+                draw_board(screen, state, font, back_button, logo_tagline, artifact_hint, artifact_hint_timer)
                 continue
 
         # AI turn
         if state['turn'] == 1:
-            ai_is_thinking = True  # Set flag to show animation
+
+            ai_is_thinking = True
             pygame.display.set_caption("AI is thinking...")
             
-            # Reset counters for this turn
-            AI_STATS['cache_hits'] = 0
-            AI_STATS['positions_evaluated'] = 0
-            AI_STATS['visualization_edges'] = {}
-            
             # Draw board and animation while AI is thinking
-            draw_board(screen, state, font, back_button, stats_button, logo_tagline)
+            draw_board(screen, state, font, back_button, logo_tagline, artifact_hint, artifact_hint_timer)
             if animation_images:
                 draw_ai_thinking_animation(screen, animation_images[animation_frame], font)
             pygame.display.flip()
@@ -1234,37 +1180,36 @@ def run_game_loop(screen, font, settings):
             # Record start time for AI thinking
             start_time = time.time()
             
-            # Get list of valid moves before even calling minimax
+            # Get list of valid moves before calling minimax
             valid_moves = get_possible_moves(state)
 
             # AI makes its move only if there are valid moves
             if valid_moves:
                 _, move = minimax(state, DEPTH, -math.inf, math.inf, True, transposition_table)
                 
-                # Extra validation - quadruple check the move is valid
+                # Extra validation
                 if move is None or move not in state['edges'] or state['edges'][move] != -1:
                     print(f"AI attempted invalid move: {move}")
-                    # Re-fetch valid moves and pick a guaranteed valid one
                     valid_moves = []
                     for edge, owner in state['edges'].items():
-                        if owner == -1:  # Strictly unplayed edges only
+                        if owner == -1:
                             valid_moves.append(edge)
                             
                     if valid_moves:
                         move = random.choice(valid_moves)
                         print(f"Selected random valid move instead: {move}")
                     else:
-                        continue  # No valid moves, skip to next loop iteration
+                        continue
                 
                 # One final verification before applying the move
                 if state['edges'][move] != -1:
                     print(f"CRITICAL: Move {move} already played! Owner: {state['edges'][move]}")
-                    continue  # Skip to next iteration - don't make an invalid move
+                    continue
                     
                 # Calculate and store thinking time
-                AI_STATS['thinking_time'] = time.time() - start_time
+                AI_THINKING_TIME = time.time() - start_time
                 
-                # Apply the AI's move - now guaranteed to be valid
+                # Apply the AI's move
                 new_state, extra_turn = apply_move(state, move, 1)
                 state = new_state
 
@@ -1274,7 +1219,7 @@ def run_game_loop(screen, font, settings):
                     print("DEBUG: AI uses gauntlet against a valid target")
                     state = use_gauntlet(state, 1)
 
-
+                # Handle item messages
                 if new_state['last_move']:
                     for cell in new_state['edge_cells'][new_state['last_move']]:
                         if cell in new_state['claimed_items']:
@@ -1286,36 +1231,52 @@ def run_game_loop(screen, font, settings):
                                 message = "🧤 Shadow Gauntlet: You stole points!"
                                 message_timer = pygame.time.get_ticks()
                             elif item == "hourglass":
-                                message = "⏳ Hourglass: Extra turn granted!"
+                                message = "⏳ Hourglass: extra turn granted!"
                                 message_timer = pygame.time.get_ticks()
-
                 
             pygame.display.set_caption("HexaHunt - Hexagonal Dots and Boxes")
-            ai_is_thinking = False  # AI is done thinking
+            ai_is_thinking = False
 
         # Draw the current game state
-        draw_board(screen, state, font, back_button, stats_button, logo_tagline)
-        
+        draw_board(screen, state, font, back_button, logo_tagline, artifact_hint, artifact_hint_timer)
         # Draw animation if AI is thinking
         if ai_is_thinking and animation_images:
             draw_ai_thinking_animation(screen, animation_images[animation_frame], font)
             pygame.display.flip()
-            
+        
         if is_terminal(state):
             # Final drawing and delay before returning to menu
-            draw_board(screen, state, font, back_button, stats_button, logo_tagline)
+            draw_board(screen, state, font, back_button, logo_tagline, artifact_hint, artifact_hint_timer)
             
             # Determine winner
             if state['score'][0] > state['score'][1]:
                 result = "You Win!"
+                text_color = BLUE
             elif state['score'][0] < state['score'][1]:
                 result = "AI Wins!"
+                text_color = RED
             else:
                 result = "It's a Tie!"
+                text_color = BLACK
             
-            # Scale text position for game over message    
-            final_text = font.render(f"Game Over! {result}", True, BLACK)
-            screen.blit(final_text, (CURRENT_WIDTH // 2 - 120 * get_scale_factor(), CURRENT_HEIGHT // 2))
+            # Draw semi-transparent overlay for better visibility
+            overlay = pygame.Surface((CURRENT_WIDTH, CURRENT_HEIGHT))
+            overlay.set_alpha(128)
+            overlay.fill((255, 255, 255))
+            screen.blit(overlay, (0, 0))
+            
+            # Position text below center of the window
+            final_text = font.render(f"Game Over! {result}", True, text_color)
+            final_rect = final_text.get_rect(center=(CURRENT_WIDTH // 2, CURRENT_HEIGHT // 2 + 50 * get_scale_factor()))
+            
+            # Draw shadow for better visibility
+            shadow_text = font.render(f"Game Over! {result}", True, BLACK)
+            shadow_rect = shadow_text.get_rect(center=(CURRENT_WIDTH // 2 + 2, CURRENT_HEIGHT // 2 + 50 * get_scale_factor() + 2))
+            screen.blit(shadow_text, shadow_rect)
+            
+            # Draw main text
+            screen.blit(final_text, final_rect)
+            
             pygame.display.flip()
             pygame.time.delay(3000)
             return
@@ -1520,6 +1481,39 @@ def draw_ai_thinking_animation(screen, current_frame, font):
     
     screen.blit(thinking_text, (text_x, text_y))
 
+def draw_artifact_hint(screen, hint_text, font):
+    """Draw the artifact hint text at the bottom center of the screen"""
+    # Use a smaller font for the hint
+    hint_font = pygame.font.SysFont(None, int(20 * get_scale_factor()))
+    
+    # Create the hint text surface with a distinctive color (purple/magenta)
+    hint_surface = hint_font.render(hint_text, True, (128, 0, 128))  # Purple color
+    
+    # Position the text at the bottom center of the screen
+    margin_from_bottom = 40 * get_scale_factor()  # Space from bottom of screen
+    text_x = (CURRENT_WIDTH - hint_surface.get_width()) // 2
+    text_y = CURRENT_HEIGHT - margin_from_bottom
+    
+    # Draw a semi-transparent background for better readability
+    bg_padding = 10 * get_scale_factor()
+    bg_rect = pygame.Rect(
+        text_x - bg_padding, 
+        text_y - bg_padding//2, 
+        hint_surface.get_width() + 2*bg_padding, 
+        hint_surface.get_height() + bg_padding
+    )
+    
+    # Create a surface for the background with alpha
+    bg_surface = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+    bg_surface.fill((255, 255, 255, 180))  # White background with transparency
+    screen.blit(bg_surface, bg_rect.topleft)
+    
+    # Draw a border around the background
+    pygame.draw.rect(screen, (128, 0, 128), bg_rect, 2)  # Purple border
+    
+    # Draw the hint text
+    screen.blit(hint_surface, (text_x, text_y))
+
 def get_clicked_cell(pos, state):
     x, y = pos
     for cell, verts in state['cell_vertices'].items():
@@ -1623,7 +1617,6 @@ def main():
             create_button("+", CURRENT_WIDTH//2 + 110 * get_scale_factor(), 190 * get_scale_factor(), 
                           50 * get_scale_factor(), button_height, button_font, "depth_plus")
         ]
-    
     update_buttons()
     
     # Initialize hexagons (adjust count as needed)
