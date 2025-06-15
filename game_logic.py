@@ -3,6 +3,7 @@
 import math
 import copy
 import random
+import pygame  # Add this import
 
 # Constants
 TOLERANCE = 10
@@ -29,7 +30,10 @@ def normalize_edge(v1, v2):
     return tuple(sorted([v1, v2]))
 
 def init_state(board_radius, hex_size, scale):
-    offset_x, offset_y = 0, 0  # Will be calculated
+    # Get current window dimensions
+    current_width = pygame.display.get_surface().get_width()
+    current_height = pygame.display.get_surface().get_height()
+    
     current_hex_size = hex_size * scale
 
     temp_vertices = {}
@@ -43,14 +47,26 @@ def init_state(board_radius, hex_size, scale):
                 cy = current_hex_size * 3 / 2 * r
                 temp_vertices[(q, r)] = polygon_vertices((cx, cy), current_hex_size)
 
+    # Calculate board bounds
     all_x, all_y = zip(*[v for poly in temp_vertices.values() for v in poly])
     min_x, max_x = min(all_x), max(all_x)
     min_y, max_y = min(all_y), max(all_y)
     board_width = max_x - min_x
     board_height = max_y - min_y
 
-    offset_x = -min_x + 50 * scale
-    offset_y = -min_y + 50 * scale
+    # Calculate offsets to center the board in the current window
+    # Add margins for UI elements
+    margin_top = 80 * scale  # Space for logo at top
+    margin_bottom = 60 * scale  # Space for scores at bottom
+    margin_sides = 20 * scale  # Space for buttons on sides
+    
+    # Calculate available space
+    available_width = current_width - (2 * margin_sides)
+    available_height = current_height - margin_top - margin_bottom
+    
+    # Center the board in the available space
+    offset_x = margin_sides + (available_width - board_width) / 2 - min_x
+    offset_y = margin_top + (available_height - board_height) / 2 - min_y
 
     state = {
         'cells': {},
@@ -255,4 +271,3 @@ def use_gauntlet(state, player, amount=None):
     state['gauntlet_cell'][player]      = None
     print("DEBUG: Gauntlet consumed")
     return state
-

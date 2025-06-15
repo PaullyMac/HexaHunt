@@ -1086,30 +1086,36 @@ def run_game_loop(screen, font, settings):
                 old_score = state['score'].copy()
                 old_turn = state['turn']
                 old_last_move = state['last_move']
-                # Save cell_edges mapping to help restore edges later
+                old_treasures = state.get('treasures', {}).copy()
+                old_artifacts = state.get('artifacts', {}).copy()
+                old_claimed_items = state.get('claimed_items', {}).copy()
+                old_gauntlet_available = state.get('gauntlet_available', {0: False, 1: False}).copy()
+                old_compass_available = state.get('compass_available', {0: False, 1: False}).copy()
+                old_gauntlet_timer = state.get('gauntlet_timer', {0: 0, 1: 0}).copy()
+                old_gauntlet_cell = state.get('gauntlet_cell', {0: None, 1: None}).copy()
+                old_compass_cell = state.get('compass_cell', {0: None, 1: None}).copy()
+                old_last_treasure_value = state.get('last_treasure_value', {0: 0, 1: 0}).copy()
                 old_cell_edges = state['cell_edges'].copy()
                 
                 # Rebuild the game state to recenter the board
                 scale = get_scale_factor()
                 state = init_state(settings['board_radius'], HEX_SIZE, scale)
 
-                # Restore cell claims first - this works because cell coordinates don't change
+                # Restore cell claims first
                 for cell, owner in old_cells.items():
                     if owner != -1 and cell in state['cells']:
                         state['cells'][cell] = owner
                 
-                # Map old edges to new edges based on their logical position in cell edge lists
-                edge_mapping = {}  # Will store old_edge -> new_edge mappings
-                
-                # For each cell, map edges based on their index in the cell's edge list
+                # Map old edges to new edges based on their logical position
+                edge_mapping = {}
                 for cell, old_edges_list in old_cell_edges.items():
-                    if cell in state['cell_edges']:  # Make sure cell exists in new state
+                    if cell in state['cell_edges']:
                         new_edges_list = state['cell_edges'][cell]
                         for i, old_edge in enumerate(old_edges_list):
-                            if i < len(new_edges_list):  # Safety check
+                            if i < len(new_edges_list):
                                 edge_mapping[old_edge] = new_edges_list[i]
                 
-                # Now restore edge ownership using our mapping
+                # Restore edge ownership using mapping
                 for old_edge, owner in old_edges.items():
                     if owner != -1 and old_edge in edge_mapping:
                         new_edge = edge_mapping[old_edge]
@@ -1119,9 +1125,18 @@ def run_game_loop(screen, font, settings):
                 if old_last_move is not None and old_last_move in edge_mapping:
                     state['last_move'] = edge_mapping[old_last_move]
                 
-                # Restore scores and turn
+                # Restore all game state data
                 state['score'] = old_score
                 state['turn'] = old_turn
+                state['treasures'] = old_treasures
+                state['artifacts'] = old_artifacts
+                state['claimed_items'] = old_claimed_items
+                state['gauntlet_available'] = old_gauntlet_available
+                state['compass_available'] = old_compass_available
+                state['gauntlet_timer'] = old_gauntlet_timer
+                state['gauntlet_cell'] = old_gauntlet_cell
+                state['compass_cell'] = old_compass_cell
+                state['last_treasure_value'] = old_last_treasure_value
                 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = pygame.mouse.get_pos()
