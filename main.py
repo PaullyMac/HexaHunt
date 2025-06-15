@@ -993,15 +993,15 @@ def run_game_loop(screen, font, settings):
     state = init_state(settings['board_radius'], HEX_SIZE, scale)
     selecting_compass = False  # Tracks whether user is choosing a cell for compass swap 
     # ------- TESTING OVERRIDES -------
-    # Allow manual placement of gauntlet and treasure for testing
-    settings['test_hourglass_cell'] = (0, 1)       # place a gauntlet at cell coordinates (3,4)
+    # Allow manual placement of Hourglass and treasure for testing
+    settings['test_hourglass_cell'] = (0, 1)       # place a hourglass at cell coordinates (3,4)
     settings['test_treasure_cell'] = (5, 6)       # place a treasure at cell (5,6)
     settings['test_treasure_type'] = 'gold'       # optional: specify treasure type (default 'gold')
     # Any cell choose must be valid keys in state['cell_edges']
     if settings.get('test_hourglass_cell') is not None:
         cell = settings['test_hourglass_cell']
-        state['artifacts'][cell] = 'gauntlet'
-        print(f"DEBUG: Test gauntlet placed at {cell}")
+        state['artifacts'][cell] = 'hourglass'
+        print(f"DEBUG: Test Hourglass placed at {cell}")
     if settings.get('test_treasure_cell') is not None:
         cell_t = settings['test_treasure_cell']
         state['treasures'][cell_t] = settings.get('test_treasure_type', 'gold')
