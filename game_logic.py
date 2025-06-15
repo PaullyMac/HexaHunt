@@ -138,6 +138,9 @@ def apply_move(state, move, player):
     new_state.setdefault('gauntlet_timer',     {0: 0,     1: 0})
     new_state.setdefault('gauntlet_cell',      {0: None,  1: None})
     new_state.setdefault('hourglass_bonus',    {0: 0,     1: 0})
+
+    new_state.setdefault('last_treasure_value', {0: 0, 1: 0})
+    new_state.setdefault('claimed_items', {})
     # Decrement gauntlet lifespan if held
     if new_state['gauntlet_available'][player] and new_state['gauntlet_timer'][player] > 0:
         new_state['gauntlet_timer'][player] -= 1
@@ -153,11 +156,13 @@ def apply_move(state, move, player):
 
     # Mark the edge
     new_state['edges'][move] = player
+    new_state['last_move'] = move 
     extra_turn = False
     # Check each adjacent cell for completion
     for cell in new_state['edge_cells'][move]:
         if new_state['cells'][cell] == -1 and all(new_state['edges'][e] != -1 for e in new_state['cell_edges'][cell]):
             new_state['cells'][cell] = player
+            new_state['score'][player] += 1  # <--- ADD THIS LINE to award 1 base point
             extra_turn = True
             print(f"DEBUG: Player {player} completed cell {cell}")
             # Treasure logic...
@@ -175,7 +180,6 @@ def apply_move(state, move, player):
                 print(f"DEBUG: Artifact '{a}' claimed at {cell}")
                 if a == 'hourglass':
                     # Give original extra turn and one bonus
-                    extra_turn = True
                     new_state['hourglass_bonus'][player] += 1
                     print(f"DEBUG: Hourglass bonus granted for player {player}")
                 elif a == 'gauntlet':
@@ -183,18 +187,18 @@ def apply_move(state, move, player):
                     new_state['gauntlet_timer'][player] = 5
                     new_state['gauntlet_cell'][player] = cell
                     new_state['artifacts'].pop(cell, None)
-                    new_state['claimed_items'].pop(cell, None)
                     print(f"DEBUG: Gauntlet picked up at {cell}, lifespan=5")
                 elif a == 'compass':
                     new_state['compass_available'][player] = True
                     new_state['compass_cell'][player] = cell
                     print(f"DEBUG: Compass now available for player {player}")
 
-    # Apply any hourglass bonus (extra move beyond the usual)
-    if new_state['hourglass_bonus'][player] > 0:
-        extra_turn = True
+    # AFTER checking for completions, we check if we need to spend a bonus turn.
+    # We only spend a bonus if we DIDN'T already earn a standard extra turn on this move.
+    if not extra_turn and new_state['hourglass_bonus'][player] > 0:
+        extra_turn = True  # Grant an extra turn by cashing in the bonus.
         new_state['hourglass_bonus'][player] -= 1
-        print(f"DEBUG: Using hourglass bonus extra turn, remaining bonus: {new_state['hourglass_bonus'][player]}")
+        print(f"DEBUG: Using hourglass bonus turn. Remaining bonuses: {new_state['hourglass_bonus'][player]}")
 
     # Switch turn if no extra_turn
     if not extra_turn:
